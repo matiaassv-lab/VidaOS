@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>VidaOS · Panel personal</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="VidaOS">
+<meta name="theme-color" content="#0F1216">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon.png">
+<style>
+:root{
+  --bg:#0F1216; --card:#171C23; --card2:#1F2630; --line:#2A323D;
+  --text:#F2F4F6; --muted:#8B95A1; --dim:#5A6470;
+  --oro:#E8B84B; --oro-bg:rgba(232,184,75,.13);
+  --coral:#FF7A6B; --coral-bg:rgba(255,122,107,.13);
+  --lila:#9D8CFF; --lila-bg:rgba(157,140,255,.13);
+  --menta:#5BD6A9; --menta-bg:rgba(91,214,169,.13);
+  --disp:ui-rounded,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  --body:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{height:100%}
+body{
+  background:var(--bg); color:var(--text); font-family:var(--body);
+  min-height:100%; padding-bottom:calc(84px + env(safe-area-inset-bottom));
+  -webkit-font-smoothing:antialiased; overscroll-behavior-y:none;
+}
+.wrap{max-width:520px;margin:0 auto;padding:0 16px}
+
+/* ── Header ── */
+header{padding:calc(14px + env(safe-area-inset-top)) 0 6px}
+.hrow{display:flex;align-items:center;justify-content:space-between}
+.hdate{color:var(--muted);font-size:13px;letter-spacing:.04em;text-transform:capitalize}
+h1.brand{font-family:var(--disp);font-size:26px;font-weight:800;letter-spacing:-.02em}
+h1.brand span{color:var(--oro)}
+.gear{background:var(--card);border:1px solid var(--line);color:var(--muted);
+  width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:17px}
+
+/* ── Secciones / tarjetas ── */
+.view{display:none;animation:fade .18s ease}
+.view.on{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin-top:12px}
+.sect{display:flex;align-items:center;justify-content:space-between;margin:20px 0 4px}
+.sect h2{font-family:var(--disp);font-size:17px;font-weight:700}
+.sect .lnk{font-size:13px;color:var(--muted);background:none;border:none;font-family:var(--body)}
+
+/* ── KPIs ── */
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:13px 14px}
+.kpi .lab{font-size:11.5px;color:var(--muted);letter-spacing:.05em;text-transform:uppercase}
+.kpi .val{font-family:var(--mono);font-size:19px;font-weight:600;margin-top:5px;font-variant-numeric:tabular-nums}
+.kpi .sub{font-size:11.5px;color:var(--dim);margin-top:3px}
+.kpi.oro .val{color:var(--oro)} .kpi.coral .val{color:var(--coral)}
+.kpi.lila .val{color:var(--lila)} .kpi.menta .val{color:var(--menta)}
+
+/* ── Nivel del día (firma) ── */
+.xp{background:linear-gradient(135deg,#1B222C 0%,#171C23 100%);border:1px solid var(--line);
+  border-radius:18px;padding:16px;margin-top:12px;position:relative;overflow:hidden}
+.xp .tit{display:flex;justify-content:space-between;align-items:baseline}
+.xp .tit b{font-family:var(--disp);font-size:15px}
+.xp .pct{font-family:var(--mono);font-size:22px;font-weight:700;color:var(--menta)}
+.xpbar{height:10px;background:#0C0F13;border-radius:99px;margin-top:11px;overflow:hidden}
+.xpfill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--menta),#8FE6C6);
+  box-shadow:0 0 14px rgba(91,214,169,.45);transition:width .5s cubic-bezier(.2,.8,.2,1)}
+.xp .det{font-size:12px;color:var(--muted);margin-top:9px}
+.xp .rango{position:absolute;top:14px;right:16px;font-size:11px;color:var(--dim)}
+
+/* ── Barras de progreso genéricas ── */
+.pbar{height:8px;background:#0C0F13;border-radius:99px;overflow:hidden;margin-top:9px}
+.pfill{height:100%;border-radius:99px;transition:width .4s ease}
+
+/* ── Metas ── */
+.meta{margin-top:12px}
+.meta .top{display:flex;align-items:center;gap:10px}
+.meta .emo{width:40px;height:40px;border-radius:12px;background:var(--oro-bg);
+  display:flex;align-items:center;justify-content:center;font-size:19px;flex:none}
+.meta .nom{font-weight:600;font-size:15px}
+.meta .cifra{font-family:var(--mono);font-size:12.5px;color:var(--muted);margin-top:2px;font-variant-numeric:tabular-nums}
+.meta .cifra b{color:var(--oro);font-weight:600}
+.meta .pctm{margin-left:auto;font-family:var(--mono);font-size:15px;font-weight:700;color:var(--oro)}
+.meta .acts{display:flex;gap:8px;margin-top:11px}
+
+/* ── Listas (gastos, tareas, aportes) ── */
+.row{display:flex;align-items:center;gap:11px;padding:11px 0;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:none}
+.row .ic{width:36px;height:36px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:16px;flex:none}
+.row .tx{flex:1;min-width:0}
+.row .t1{font-size:14.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .t2{font-size:12px;color:var(--muted);margin-top:2px}
+.row .monto{font-family:var(--mono);font-size:14.5px;font-weight:600;font-variant-numeric:tabular-nums}
+.row .del{background:none;border:none;color:var(--dim);font-size:15px;padding:6px 2px 6px 8px}
+.vacio{text-align:center;color:var(--dim);font-size:13.5px;padding:26px 10px;line-height:1.5}
+
+/* ── Tareas ── */
+.chk{width:26px;height:26px;border-radius:9px;border:2px solid var(--line);flex:none;
+  display:flex;align-items:center;justify-content:center;font-size:14px;color:transparent;transition:.15s}
+.chk.ok{background:var(--lila);border-color:var(--lila);color:#14101F}
+.trow .t1.hecha{text-decoration:line-through;color:var(--dim)}
+
+/* ── Hábitos ── */
+.hab .hcab{display:flex;align-items:center;gap:10px}
+.hab .hic{width:40px;height:40px;border-radius:12px;background:var(--menta-bg);
+  display:flex;align-items:center;justify-content:center;font-size:18px;flex:none}
+.racha{font-family:var(--mono);font-size:12.5px;color:var(--muted)}
+.racha b{color:var(--menta)}
+.semana{display:flex;gap:6px;margin-top:12px}
+.dia{flex:1;text-align:center}
+.dia .dlab{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.05em}
+.dot{width:100%;aspect-ratio:1;max-width:34px;margin:5px auto 0;border-radius:10px;
+  background:#0C0F13;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-family:var(--mono);color:var(--dim)}
+.dot.hecho{background:var(--menta);border-color:var(--menta);color:#0B1A14;font-weight:700}
+.dot.libre{opacity:.28}
+.dot.hoy{outline:2px solid rgba(91,214,169,.5);outline-offset:2px}
+.hbtns{display:flex;gap:8px;margin-top:12px}
+
+/* ── Gráficos ── */
+.grafico{display:flex;align-items:center;gap:16px}
+.leyenda{flex:1;min-width:0}
+.leyenda .li{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);padding:3.5px 0}
+.leyenda .sw{width:10px;height:10px;border-radius:4px;flex:none}
+.leyenda .lm{margin-left:auto;font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums;color:var(--text)}
+
+/* ── Botones ── */
+.btn{border:none;border-radius:13px;padding:12px 16px;font-size:14.5px;font-weight:600;
+  font-family:var(--body);width:100%;transition:.12s}
+.btn:active{transform:scale(.97)}
+.btn.oro{background:var(--oro);color:#241A05}
+.btn.coral{background:var(--coral);color:#2A0E0A}
+.btn.lila{background:var(--lila);color:#17102E}
+.btn.menta{background:var(--menta);color:#0B1F17}
+.btn.fant{background:var(--card2);color:var(--text);border:1px solid var(--line)}
+.btn.chico{width:auto;padding:9px 13px;font-size:13px;border-radius:11px}
+.fila-btn{display:flex;gap:10px;margin-top:14px}
+
+/* ── Filtro de mes ── */
+.mesnav{display:flex;align-items:center;justify-content:space-between;margin-top:14px;
+  background:var(--card);border:1px solid var(--line);border-radius:14px;padding:6px 8px}
+.mesnav b{font-family:var(--disp);font-size:15px;text-transform:capitalize}
+.mesnav button{background:none;border:none;color:var(--muted);font-size:19px;padding:6px 14px}
+
+/* ── Hoja modal ── */
+.velo{position:fixed;inset:0;background:rgba(5,7,10,.66);opacity:0;pointer-events:none;
+  transition:.22s;z-index:40;backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+.velo.on{opacity:1;pointer-events:auto}
+.hoja{position:fixed;left:0;right:0;bottom:0;z-index:50;background:var(--card);
+  border-radius:22px 22px 0 0;border-top:1px solid var(--line);
+  padding:10px 20px calc(24px + env(safe-area-inset-bottom));
+  transform:translateY(105%);transition:transform .28s cubic-bezier(.2,.8,.2,1);
+  max-width:560px;margin:0 auto;max-height:86vh;overflow-y:auto}
+.hoja.on{transform:none}
+.asa{width:38px;height:4px;border-radius:99px;background:var(--line);margin:4px auto 14px}
+.hoja h3{font-family:var(--disp);font-size:18px;margin-bottom:14px}
+.campo{margin-bottom:12px}
+.campo label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px;letter-spacing:.03em}
+.campo input,.campo select,.campo textarea{
+  width:100%;background:#0C0F13;border:1px solid var(--line);border-radius:12px;
+  color:var(--text);font-size:16px;padding:12px 13px;font-family:var(--body);outline:none}
+.campo input:focus,.campo select:focus{border-color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{background:#0C0F13;border:1px solid var(--line);color:var(--muted);border-radius:99px;
+  padding:8px 13px;font-size:13px;font-family:var(--body)}
+.chip.on{background:var(--menta-bg);border-color:var(--menta);color:var(--menta);font-weight:600}
+.chip.oncat{background:var(--coral-bg);border-color:var(--coral);color:var(--coral);font-weight:600}
+
+/* ── Tab bar ── */
+nav{position:fixed;left:0;right:0;bottom:0;z-index:30;
+  background:rgba(15,18,22,.88);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+  border-top:1px solid var(--line);padding:8px 6px calc(8px + env(safe-area-inset-bottom))}
+.tabs{max-width:520px;margin:0 auto;display:flex}
+.tab{flex:1;background:none;border:none;color:var(--dim);font-family:var(--body);
+  font-size:10.5px;display:flex;flex-direction:column;align-items:center;gap:3px;padding:4px 0}
+.tab svg{width:23px;height:23px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.tab.on{color:var(--text)}
+.tab.on.t-inicio{color:var(--text)} .tab.on.t-ahorro{color:var(--oro)}
+.tab.on.t-gastos{color:var(--coral)} .tab.on.t-tareas{color:var(--lila)}
+.tab.on.t-habitos{color:var(--menta)}
+
+.aviso{background:var(--coral-bg);border:1px solid rgba(255,122,107,.35);color:var(--coral);
+  border-radius:13px;padding:11px 13px;font-size:12.5px;margin-top:12px;display:none}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="hrow">
+      <div>
+        <div class="hdate" id="hFecha"></div>
+        <h1 class="brand">Vida<span>OS</span></h1>
+      </div>
+      <button class="gear" onclick="abrirAjustes()">⚙︎</button>
+    </div>
+  </header>
+
+  <div class="aviso" id="avisoStorage">⚠️ Este navegador no permite guardar datos. Abre la app desde Safari (o instálala en tu pantalla de inicio) para que todo quede guardado.</div>
+
+  <!-- ════ INICIO ════ -->
+  <section class="view on" id="v-inicio">
+    <div class="xp">
+      <div class="rango" id="xpRango"></div>
+      <div class="tit"><b>Nivel del día</b><span class="pct" id="xpPct">0%</span></div>
+      <div class="xpbar"><div class="xpfill" id="xpFill" style="width:0%"></div></div>
+      <div class="det" id="xpDet"></div>
+    </div>
+    <div class="kpis" id="kpis"></div>
+
+    <div class="sect"><h2>Gastos del mes</h2><button class="lnk" onclick="irTab('gastos')">Ver todo ›</button></div>
+    <div class="card"><div class="grafico" id="donutGastos"></div></div>
+
+    <div class="sect"><h2>Metas de ahorro</h2><button class="lnk" onclick="irTab('ahorro')">Ver todo ›</button></div>
+    <div class="card" id="miniMetas"></div>
+
+    <div class="sect"><h2>Hábitos de hoy</h2><button class="lnk" onclick="irTab('habitos')">Ver todo ›</button></div>
+    <div class="card" id="miniHabitos"></div>
+  </section>
+
+  <!-- ════ AHORRO ════ -->
+  <section class="view" id="v-ahorro">
+    <div class="kpis" id="kpisAhorro"></div>
+    <div id="listaMetas"></div>
+    <div class="fila-btn"><button class="btn oro" onclick="hojaNuevaMeta()">＋ Nueva meta</button></div>
+  </section>
+
+  <!-- ════ GASTOS ════ -->
+  <section class="view" id="v-gastos">
+    <div class="mesnav">
+      <button onclick="cambiarMes(-1)">‹</button>
+      <b id="mesLabel"></b>
+      <button onclick="cambiarMes(1)">›</button>
+    </div>
+    <div class="kpis" id="kpisGastos"></div>
+    <div class="card"><div class="grafico" id="donutGastos2"></div></div>
+    <div class="fila-btn"><button class="btn coral" onclick="hojaNuevoGasto()">＋ Registrar gasto</button></div>
+    <div class="sect"><h2>Movimientos</h2></div>
+    <div class="card" id="listaGastos"></div>
+  </section>
+
+  <!-- ════ TAREAS ════ -->
+  <section class="view" id="v-tareas">
+    <div class="kpis" id="kpisTareas"></div>
+    <div class="fila-btn"><button class="btn lila" onclick="hojaNuevaTarea()">＋ Nueva tarea</button></div>
+    <div class="sect"><h2>Pendientes</h2></div>
+    <div class="card" id="listaPend"></div>
+    <div class="sect"><h2>Completadas hoy</h2><button class="lnk" onclick="limpiarHechas()">Limpiar</button></div>
+    <div class="card" id="listaHechas"></div>
+  </section>
+
+  <!-- ════ HÁBITOS ════ -->
+  <section class="view" id="v-habitos">
+    <div class="kpis" id="kpisHabitos"></div>
+    <div id="listaHabitos"></div>
+    <div class="fila-btn"><button class="btn menta" onclick="hojaNuevoHabito()">＋ Nuevo hábito</button></div>
+  </section>
+</div>
+
+<!-- Hoja modal -->
+<div class="velo" id="velo" onclick="cerrarHoja()"></div>
+<div class="hoja" id="hoja"><div class="asa"></div><div id="hojaBody"></div></div>
+
+<!-- Tab bar -->
+<nav><div class="tabs">
+  <button class="tab t-inicio on" data-tab="inicio" onclick="irTab('inicio')">
+    <svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9.5 21v-6h5v6"/></svg>Inicio</button>
+  <button class="tab t-ahorro" data-tab="ahorro" onclick="irTab('ahorro')">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><path d="M12 10.7v2.6"/></svg>Ahorro</button>
+  <button class="tab t-gastos" data-tab="gastos" onclick="irTab('gastos')">
+    <svg viewBox="0 0 24 24"><path d="M6 3h12v18l-2-1.4L14 21l-2-1.4L10 21l-2-1.4L6 21z"/><path d="M9.5 8h5M9.5 12h5"/></svg>Gastos</button>
+  <button class="tab t-tareas" data-tab="tareas" onclick="irTab('tareas')">
+    <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="m8.5 12.2 2.4 2.4 4.6-5"/></svg>Tareas</button>
+  <button class="tab t-habitos" data-tab="habitos" onclick="irTab('habitos')">
+    <svg viewBox="0 0 24 24"><path d="M12 3c1.8 2.6 5.5 4.4 5.5 9a5.5 5.5 0 0 1-11 0c0-2.1.8-3.6 1.9-5.1.5 1 1.2 1.7 2.1 2.1C10.2 6.6 11 4.9 12 3z"/></svg>Hábitos</button>
+</div></nav>
+<script>
+/* ══════════ Estado y persistencia ══════════ */
+const CLAVE='vidaos_v1';
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const hoy=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
+const CLP=n=>'$'+Math.round(n||0).toLocaleString('es-CL');
+const DIAS=['D','L','M','X','J','V','S'];
+const MESES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+const CATS=[
+  {n:'Comida',e:'🍽️',c:'#FF7A6B'},{n:'Supermercado',e:'🛒',c:'#E8B84B'},
+  {n:'Transporte',e:'🚌',c:'#6BB6FF'},{n:'Casa',e:'🏠',c:'#9D8CFF'},
+  {n:'Gaming',e:'🎮',c:'#5BD6A9'},{n:'Ocio',e:'🎬',c:'#FF9DC6'},
+  {n:'Salud',e:'💊',c:'#7FE0E8'},{n:'Otros',e:'📦',c:'#98A2AE'}];
+
+function porDefecto(){return{
+  metas:[
+    {id:uid(),nombre:'Cambio de casa 2027',emoji:'🏠',objetivo:5000000,aportes:[]},
+    {id:uid(),nombre:'Tarjeta gráfica',emoji:'🎮',objetivo:900000,aportes:[]}
+  ],
+  gastos:[],
+  tareas:[],
+  habitos:[
+    {id:uid(),nombre:'Ejercicio',emoji:'💪',tipo:'check',dias:[0,1,2,3,4,5,6],registros:{}},
+    {id:uid(),nombre:'Estudio',emoji:'📚',tipo:'tiempo',metaMin:60,dias:[1,2,3,4,5],registros:{}}
+  ]
+};}
+
+let hayStorage=true, S;
+try{
+  localStorage.setItem('__t','1');localStorage.removeItem('__t');
+  S=JSON.parse(localStorage.getItem(CLAVE))||porDefecto();
+}catch(e){hayStorage=false;S=porDefecto();}
+function guardar(){ if(hayStorage){try{localStorage.setItem(CLAVE,JSON.stringify(S));}catch(e){}} }
+
+/* ══════════ Navegación ══════════ */
+let mesVista=new Date();
+function irTab(t){
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('on'));
+  document.getElementById('v-'+t).classList.add('on');
+  document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
+  window.scrollTo({top:0});
+  pintar();
+}
+
+/* ══════════ Cálculos ══════════ */
+const ahorradoDe=m=>m.aportes.reduce((s,a)=>s+a.monto,0);
+const gastosDeMes=(y,mo)=>S.gastos.filter(g=>{const[a,m]=g.fecha.split('-');return +a===y&&+m===mo+1;});
+
+function programadoHoy(h){return h.dias.includes(new Date().getDay());}
+function cumplidoEn(h,f){
+  const r=h.registros[f];
+  if(h.tipo==='check')return r===true;
+  return typeof r==='number'&&r>=(h.metaMin||1);
+}
+function minutosEn(h,f){const r=h.registros[f];return typeof r==='number'?r:0;}
+function racha(h){
+  let n=0;const d=new Date();
+  if(programadoHoy(h)&&!cumplidoEn(h,hoy()))d.setDate(d.getDate()-1); // hoy aún no rompe la racha
+  for(let i=0;i<730;i++){
+    const f=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    if(h.dias.includes(d.getDay())){ if(cumplidoEn(h,f))n++; else break; }
+    d.setDate(d.getDate()-1);
+  }
+  return n;
+}
+function xpDelDia(){
+  const f=hoy();
+  const tHoy=S.tareas.filter(t=>!t.hecha||t.fechaHecha===f);
+  const tOk=tHoy.filter(t=>t.hecha).length;
+  const hHoy=S.habitos.filter(programadoHoy);
+  const hOk=hHoy.filter(h=>cumplidoEn(h,f)).length;
+  const tot=tHoy.length+hHoy.length;
+  const pct=tot?Math.round((tOk+hOk)/tot*100):0;
+  return{pct,tOk,tTot:tHoy.length,hOk,hTot:hHoy.length};
+}
+const rangoXP=p=>p>=100?'⭐ Día legendario':p>=75?'🔥 Día épico':p>=50?'💠 Día raro':p>=25?'🟢 Día común':'⚪ Recién empezando';
+
+/* ══════════ Donut SVG ══════════ */
+function donut(objId,gastos){
+  const el=document.getElementById(objId); if(!el)return;
+  const porCat={};let tot=0;
+  gastos.forEach(g=>{porCat[g.cat]=(porCat[g.cat]||0)+g.monto;tot+=g.monto;});
+  if(!tot){el.innerHTML='<div class="vacio" style="width:100%">Sin gastos registrados este mes.<br>¡Buen control! 💪</div>';return;}
+  const orden=Object.entries(porCat).sort((a,b)=>b[1]-a[1]);
+  const R=42,C=2*Math.PI*R;let off=0,segs='';
+  orden.forEach(([cat,m])=>{
+    const col=(CATS.find(c=>c.n===cat)||CATS[7]).c;
+    const largo=m/tot*C;
+    segs+=`<circle cx="55" cy="55" r="${R}" fill="none" stroke="${col}" stroke-width="14"
+      stroke-dasharray="${largo-2} ${C-largo+2}" stroke-dashoffset="${-off}" transform="rotate(-90 55 55)"/>`;
+    off+=largo;
+  });
+  el.innerHTML=`<svg width="110" height="110" viewBox="0 0 110 110" style="flex:none">${segs}
+      <text x="55" y="52" text-anchor="middle" fill="var(--text)" font-size="13" font-weight="700" font-family="var(--mono)">${tot>=1e6?(tot/1e6).toFixed(1)+'M':CLP(tot)}</text>
+      <text x="55" y="67" text-anchor="middle" fill="var(--muted)" font-size="9">total mes</text></svg>
+    <div class="leyenda">${orden.slice(0,5).map(([cat,m])=>{
+      const c=CATS.find(x=>x.n===cat)||CATS[7];
+      return `<div class="li"><span class="sw" style="background:${c.c}"></span>${c.e} ${cat}<span class="lm">${CLP(m)}</span></div>`;}).join('')}
+    </div>`;
+}
+
+/* ══════════ Render principal ══════════ */
+function pintar(){
+  const f=hoy(),ahora=new Date();
+  document.getElementById('hFecha').textContent=
+    ahora.toLocaleDateString('es-CL',{weekday:'long',day:'numeric',month:'long'});
+  if(!hayStorage)document.getElementById('avisoStorage').style.display='block';
+
+  /* — Inicio — */
+  const xp=xpDelDia();
+  document.getElementById('xpPct').textContent=xp.pct+'%';
+  document.getElementById('xpFill').style.width=xp.pct+'%';
+  document.getElementById('xpRango').textContent=rangoXP(xp.pct);
+  document.getElementById('xpDet').textContent=
+    `Tareas ${xp.tOk}/${xp.tTot} · Hábitos ${xp.hOk}/${xp.hTot} — cada check sube tu barra de XP`;
+
+  const totAhorro=S.metas.reduce((s,m)=>s+ahorradoDe(m),0);
+  const totObj=S.metas.reduce((s,m)=>s+m.objetivo,0);
+  const gMes=gastosDeMes(ahora.getFullYear(),ahora.getMonth());
+  const totGMes=gMes.reduce((s,g)=>s+g.monto,0);
+  const mejorRacha=S.habitos.length?Math.max(...S.habitos.map(racha)):0;
+  document.getElementById('kpis').innerHTML=`
+    <div class="kpi oro"><div class="lab">Ahorro total</div><div class="val">${CLP(totAhorro)}</div>
+      <div class="sub">${totObj?Math.round(totAhorro/totObj*100):0}% de tus metas</div></div>
+    <div class="kpi coral"><div class="lab">Gastos del mes</div><div class="val">${CLP(totGMes)}</div>
+      <div class="sub">${gMes.length} movimiento${gMes.length===1?'':'s'}</div></div>
+    <div class="kpi lila"><div class="lab">Tareas de hoy</div><div class="val">${xp.tOk}/${xp.tTot}</div>
+      <div class="sub">${xp.tTot-xp.tOk} pendiente${xp.tTot-xp.tOk===1?'':'s'}</div></div>
+    <div class="kpi menta"><div class="lab">Mejor racha</div><div class="val">${mejorRacha} 🔥</div>
+      <div class="sub">días seguidos</div></div>`;
+  donut('donutGastos',gMes);
+
+  document.getElementById('miniMetas').innerHTML=S.metas.length?S.metas.map(m=>{
+    const a=ahorradoDe(m),p=Math.min(100,m.objetivo?a/m.objetivo*100:0);
+    return `<div class="meta"><div class="top"><div class="emo">${m.emoji}</div>
+      <div><div class="nom">${m.nombre}</div><div class="cifra"><b>${CLP(a)}</b> de ${CLP(m.objetivo)}</div></div>
+      <div class="pctm">${Math.round(p)}%</div></div>
+      <div class="pbar"><div class="pfill" style="width:${p}%;background:var(--oro)"></div></div></div>`;
+  }).join(''):'<div class="vacio">Aún no tienes metas. Crea la primera en la pestaña Ahorro.</div>';
+
+  const habsHoy=S.habitos.filter(programadoHoy);
+  document.getElementById('miniHabitos').innerHTML=habsHoy.length?habsHoy.map(h=>{
+    const ok=cumplidoEn(h,f);
+    const sub=h.tipo==='tiempo'?`${minutosEn(h,f)}/${h.metaMin} min`:(ok?'Completado':'Pendiente');
+    return `<div class="row"><div class="ic" style="background:var(--menta-bg)">${h.emoji}</div>
+      <div class="tx"><div class="t1">${h.nombre}</div><div class="t2">${sub} · racha ${racha(h)}🔥</div></div>
+      <button class="chk ${ok?'ok':''}" onclick="toggleHabito('${h.id}')">✓</button></div>`;
+  }).join(''):'<div class="vacio">Hoy no tienes hábitos programados. Día libre 😌</div>';
+
+  /* — Ahorro — */
+  document.getElementById('kpisAhorro').innerHTML=`
+    <div class="kpi oro"><div class="lab">Total ahorrado</div><div class="val">${CLP(totAhorro)}</div>
+      <div class="sub">en ${S.metas.length} meta${S.metas.length===1?'':'s'}</div></div>
+    <div class="kpi oro"><div class="lab">Falta por juntar</div><div class="val">${CLP(Math.max(0,totObj-totAhorro))}</div>
+      <div class="sub">objetivo total ${CLP(totObj)}</div></div>`;
+  document.getElementById('listaMetas').innerHTML=S.metas.map(m=>{
+    const a=ahorradoDe(m),p=Math.min(100,m.objetivo?a/m.objetivo*100:0);
+    const ults=[...m.aportes].sort((x,y)=>y.fecha.localeCompare(x.fecha)).slice(0,3);
+    return `<div class="card meta"><div class="top"><div class="emo">${m.emoji}</div>
+      <div><div class="nom">${m.nombre}</div><div class="cifra"><b>${CLP(a)}</b> de ${CLP(m.objetivo)} · faltan ${CLP(Math.max(0,m.objetivo-a))}</div></div>
+      <div class="pctm">${Math.round(p)}%</div></div>
+      <div class="pbar"><div class="pfill" style="width:${p}%;background:var(--oro)"></div></div>
+      ${ults.length?`<div style="margin-top:8px">${ults.map(ap=>
+        `<div class="row" style="padding:7px 0"><div class="tx"><div class="t2">${ap.fecha}</div></div>
+         <div class="monto" style="color:var(--oro)">+${CLP(ap.monto)}</div></div>`).join('')}</div>`:''}
+      <div class="acts"><button class="btn oro chico" onclick="hojaAporte('${m.id}')">＋ Aporte</button>
+      <button class="btn fant chico" onclick="hojaEditarMeta('${m.id}')">Editar</button>
+      <button class="btn fant chico" onclick="borrarMeta('${m.id}')">🗑</button></div></div>`;
+  }).join('')||'<div class="card vacio">Crea tu primera meta de ahorro 🎯</div>';
+
+  /* — Gastos — */
+  const y=mesVista.getFullYear(),mo=mesVista.getMonth();
+  document.getElementById('mesLabel').textContent=MESES[mo]+' '+y;
+  const gv=gastosDeMes(y,mo).sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  const totV=gv.reduce((s,g)=>s+g.monto,0);
+  const dias=new Set(gv.map(g=>g.fecha)).size||1;
+  document.getElementById('kpisGastos').innerHTML=`
+    <div class="kpi coral"><div class="lab">Total del mes</div><div class="val">${CLP(totV)}</div>
+      <div class="sub">${gv.length} movimiento${gv.length===1?'':'s'}</div></div>
+    <div class="kpi coral"><div class="lab">Promedio diario</div><div class="val">${CLP(totV/dias)}</div>
+      <div class="sub">en días con gasto</div></div>`;
+  donut('donutGastos2',gv);
+  document.getElementById('listaGastos').innerHTML=gv.length?gv.map(g=>{
+    const c=CATS.find(x=>x.n===g.cat)||CATS[7];
+    return `<div class="row"><div class="ic" style="background:${c.c}22">${c.e}</div>
+      <div class="tx"><div class="t1">${g.nota||g.cat}</div><div class="t2">${g.cat} · ${g.fecha}</div></div>
+      <div class="monto" style="color:var(--coral)">−${CLP(g.monto)}</div>
+      <button class="del" onclick="borrarGasto('${g.id}')">✕</button></div>`;
+  }).join(''):'<div class="vacio">Sin movimientos este mes.</div>';
+
+  /* — Tareas — */
+  const pend=S.tareas.filter(t=>!t.hecha);
+  const hechasHoy=S.tareas.filter(t=>t.hecha&&t.fechaHecha===f);
+  document.getElementById('kpisTareas').innerHTML=`
+    <div class="kpi lila"><div class="lab">Pendientes</div><div class="val">${pend.length}</div><div class="sub">por hacer</div></div>
+    <div class="kpi lila"><div class="lab">Hechas hoy</div><div class="val">${hechasHoy.length}</div><div class="sub">¡a seguir!</div></div>`;
+  const filaT=t=>`<div class="row trow"><button class="chk ${t.hecha?'ok':''}" onclick="toggleTarea('${t.id}')">✓</button>
+    <div class="tx"><div class="t1 ${t.hecha?'hecha':''}">${t.texto}</div>${t.nota?`<div class="t2">${t.nota}</div>`:''}</div>
+    <button class="del" onclick="borrarTarea('${t.id}')">✕</button></div>`;
+  document.getElementById('listaPend').innerHTML=pend.map(filaT).join('')||'<div class="vacio">Nada pendiente. Inbox cero ✨</div>';
+  document.getElementById('listaHechas').innerHTML=hechasHoy.map(filaT).join('')||'<div class="vacio">Todavía nada por aquí.</div>';
+
+  /* — Hábitos — */
+  const okHoy=habsHoy.filter(h=>cumplidoEn(h,f)).length;
+  document.getElementById('kpisHabitos').innerHTML=`
+    <div class="kpi menta"><div class="lab">Hoy</div><div class="val">${okHoy}/${habsHoy.length}</div><div class="sub">hábitos cumplidos</div></div>
+    <div class="kpi menta"><div class="lab">Mejor racha</div><div class="val">${mejorRacha} 🔥</div><div class="sub">días seguidos</div></div>`;
+  document.getElementById('listaHabitos').innerHTML=S.habitos.map(h=>{
+    const ok=cumplidoEn(h,f);
+    const semana=[...Array(7)].map((_,i)=>{
+      const d=new Date();d.setDate(d.getDate()-(6-i));
+      const fd=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+      const prog=h.dias.includes(d.getDay()),done=cumplidoEn(h,fd);
+      return `<div class="dia"><div class="dlab">${DIAS[d.getDay()]}</div>
+        <div class="dot ${done?'hecho':''} ${prog?'':'libre'} ${fd===f?'hoy':''}">${done?'✓':(h.tipo==='tiempo'&&minutosEn(h,fd)?minutosEn(h,fd):'')}</div></div>`;
+    }).join('');
+    const detalle=h.tipo==='tiempo'
+      ?`Meta ${h.metaMin} min/día · hoy ${minutosEn(h,f)} min`
+      :(h.dias.length===7?'Todos los días':'Días: '+h.dias.map(d=>DIAS[d]).join(' '));
+    return `<div class="card hab"><div class="hcab"><div class="hic">${h.emoji}</div>
+      <div class="tx"><div class="t1" style="font-weight:600">${h.nombre}</div>
+      <div class="racha">${detalle} · <b>${racha(h)}🔥</b></div></div>
+      ${h.tipo==='check'?`<button class="chk ${ok?'ok':''}" style="width:30px;height:30px" onclick="toggleHabito('${h.id}')">✓</button>`:''}</div>
+      <div class="semana">${semana}</div>
+      <div class="hbtns">
+        ${h.tipo==='tiempo'?`<button class="btn menta chico" onclick="hojaTiempo('${h.id}')">＋ Registrar tiempo</button>`:''}
+        <button class="btn fant chico" onclick="borrarHabito('${h.id}')">🗑</button></div></div>`;
+  }).join('')||'<div class="card vacio">Crea tu primer hábito 🌱</div>';
+}
+/* ══════════ Acciones ══════════ */
+function toggleTarea(id){const t=S.tareas.find(x=>x.id===id);if(!t)return;
+  t.hecha=!t.hecha;t.fechaHecha=t.hecha?hoy():null;guardar();pintar();}
+function borrarTarea(id){S.tareas=S.tareas.filter(t=>t.id!==id);guardar();pintar();}
+function limpiarHechas(){S.tareas=S.tareas.filter(t=>!t.hecha);guardar();pintar();}
+function toggleHabito(id){const h=S.habitos.find(x=>x.id===id);if(!h||h.tipo!=='check')return;
+  const f=hoy();h.registros[f]=!h.registros[f];if(!h.registros[f])delete h.registros[f];guardar();pintar();}
+function borrarHabito(id){if(!confirm('¿Eliminar este hábito y su historial?'))return;
+  S.habitos=S.habitos.filter(h=>h.id!==id);guardar();pintar();}
+function borrarGasto(id){S.gastos=S.gastos.filter(g=>g.id!==id);guardar();pintar();}
+function borrarMeta(id){if(!confirm('¿Eliminar esta meta y sus aportes?'))return;
+  S.metas=S.metas.filter(m=>m.id!==id);guardar();pintar();}
+function cambiarMes(d){mesVista=new Date(mesVista.getFullYear(),mesVista.getMonth()+d,1);pintar();}
+
+/* ══════════ Hoja modal ══════════ */
+function abrirHoja(html){document.getElementById('hojaBody').innerHTML=html;
+  document.getElementById('velo').classList.add('on');document.getElementById('hoja').classList.add('on');}
+function cerrarHoja(){document.getElementById('velo').classList.remove('on');
+  document.getElementById('hoja').classList.remove('on');}
+const inp=(id,lab,ph,tipo='text',val='',extra='')=>
+  `<div class="campo"><label>${lab}</label><input id="${id}" type="${tipo}" placeholder="${ph}" value="${val}" ${extra}></div>`;
+
+/* — Gasto — */
+let catSel='Comida';
+function hojaNuevoGasto(){catSel='Comida';
+  abrirHoja(`<h3>Registrar gasto</h3>
+    ${inp('gMonto','Monto (CLP)','15000','number','','inputmode="numeric"')}
+    <div class="campo"><label>Categoría</label><div class="chips" id="gChips">${CATS.map(c=>
+      `<button class="chip ${c.n===catSel?'oncat':''}" onclick="selCat('${c.n}')">${c.e} ${c.n}</button>`).join('')}</div></div>
+    ${inp('gNota','Nota (opcional)','Almuerzo con el equipo')}
+    ${inp('gFecha','Fecha','','date',hoy())}
+    <button class="btn coral" onclick="guardarGasto()">Guardar gasto</button>`);}
+function selCat(n){catSel=n;document.querySelectorAll('#gChips .chip').forEach(c=>
+  c.classList.toggle('oncat',c.textContent.includes(n)));}
+function guardarGasto(){
+  const m=+document.getElementById('gMonto').value;
+  if(!m||m<=0){alert('Ingresa un monto válido.');return;}
+  S.gastos.push({id:uid(),monto:m,cat:catSel,nota:document.getElementById('gNota').value.trim(),
+    fecha:document.getElementById('gFecha').value||hoy()});
+  guardar();cerrarHoja();pintar();}
+
+/* — Tarea — */
+function hojaNuevaTarea(){abrirHoja(`<h3>Nueva tarea</h3>
+  ${inp('tTexto','¿Qué hay que hacer?','Pagar cuenta de la luz')}
+  ${inp('tNota','Detalle (opcional)','Antes del viernes')}
+  <button class="btn lila" onclick="guardarTarea()">Agregar tarea</button>`);
+  setTimeout(()=>document.getElementById('tTexto')?.focus(),320);}
+function guardarTarea(){const tx=document.getElementById('tTexto').value.trim();
+  if(!tx){alert('Escribe la tarea.');return;}
+  S.tareas.unshift({id:uid(),texto:tx,nota:document.getElementById('tNota').value.trim(),hecha:false,fechaHecha:null});
+  guardar();cerrarHoja();pintar();}
+
+/* — Meta — */
+function hojaNuevaMeta(){abrirHoja(`<h3>Nueva meta de ahorro</h3>
+  ${inp('mNom','Nombre','Viaje al sur')}
+  ${inp('mEmo','Emoji','✈️','text','🎯')}
+  ${inp('mObj','Monto objetivo (CLP)','1000000','number','','inputmode="numeric"')}
+  <button class="btn oro" onclick="guardarMeta()">Crear meta</button>`);}
+function guardarMeta(){const n=document.getElementById('mNom').value.trim(),o=+document.getElementById('mObj').value;
+  if(!n||!o||o<=0){alert('Completa nombre y monto objetivo.');return;}
+  S.metas.push({id:uid(),nombre:n,emoji:document.getElementById('mEmo').value.trim()||'🎯',objetivo:o,aportes:[]});
+  guardar();cerrarHoja();pintar();}
+function hojaEditarMeta(id){const m=S.metas.find(x=>x.id===id);if(!m)return;
+  abrirHoja(`<h3>Editar meta</h3>
+  ${inp('mNom','Nombre','',  'text',m.nombre)}
+  ${inp('mEmo','Emoji','','text',m.emoji)}
+  ${inp('mObj','Monto objetivo (CLP)','','number',m.objetivo,'inputmode="numeric"')}
+  <button class="btn oro" onclick="actualizarMeta('${id}')">Guardar cambios</button>`);}
+function actualizarMeta(id){const m=S.metas.find(x=>x.id===id);if(!m)return;
+  const n=document.getElementById('mNom').value.trim(),o=+document.getElementById('mObj').value;
+  if(!n||!o||o<=0){alert('Completa nombre y monto objetivo.');return;}
+  m.nombre=n;m.emoji=document.getElementById('mEmo').value.trim()||m.emoji;m.objetivo=o;
+  guardar();cerrarHoja();pintar();}
+function hojaAporte(id){const m=S.metas.find(x=>x.id===id);if(!m)return;
+  abrirHoja(`<h3>Aporte a "${m.nombre}"</h3>
+  ${inp('aMonto','Monto (CLP)','50000','number','','inputmode="numeric"')}
+  ${inp('aFecha','Fecha','','date',hoy())}
+  <button class="btn oro" onclick="guardarAporte('${id}')">Registrar aporte</button>`);}
+function guardarAporte(id){const m=S.metas.find(x=>x.id===id);if(!m)return;
+  const v=+document.getElementById('aMonto').value;
+  if(!v||v<=0){alert('Ingresa un monto válido.');return;}
+  m.aportes.push({monto:v,fecha:document.getElementById('aFecha').value||hoy()});
+  guardar();cerrarHoja();pintar();}
+
+/* — Hábito — */
+let diasSel=[1,2,3,4,5],tipoSel='check';
+function hojaNuevoHabito(){diasSel=[0,1,2,3,4,5,6];tipoSel='check';
+  abrirHoja(`<h3>Nuevo hábito</h3>
+  ${inp('hNom','Nombre','Meditar')}
+  ${inp('hEmo','Emoji','🧘','text','🌱')}
+  <div class="campo"><label>Tipo</label><div class="chips">
+    <button class="chip on" id="tipoCheck" onclick="selTipo('check')">✓ Check simple</button>
+    <button class="chip" id="tipoTiempo" onclick="selTipo('tiempo')">⏱ Con tiempo</button></div></div>
+  <div class="campo" id="campoMin" style="display:none">
+    <label>Meta de minutos por día</label><input id="hMin" type="number" inputmode="numeric" value="60"></div>
+  <div class="campo"><label>Días de la semana</label><div class="chips" id="hDias">${[1,2,3,4,5,6,0].map(d=>
+    `<button class="chip on" data-d="${d}" onclick="selDia(${d})">${DIAS[d]}</button>`).join('')}</div></div>
+  <button class="btn menta" onclick="guardarHabito()">Crear hábito</button>`);}
+function selTipo(t){tipoSel=t;
+  document.getElementById('tipoCheck').classList.toggle('on',t==='check');
+  document.getElementById('tipoTiempo').classList.toggle('on',t==='tiempo');
+  document.getElementById('campoMin').style.display=t==='tiempo'?'block':'none';}
+function selDia(d){const i=diasSel.indexOf(d);
+  if(i>=0){if(diasSel.length>1)diasSel.splice(i,1);}else diasSel.push(d);
+  document.querySelectorAll('#hDias .chip').forEach(c=>
+    c.classList.toggle('on',diasSel.includes(+c.dataset.d)));}
+function guardarHabito(){const n=document.getElementById('hNom').value.trim();
+  if(!n){alert('Ponle nombre al hábito.');return;}
+  const h={id:uid(),nombre:n,emoji:document.getElementById('hEmo').value.trim()||'🌱',
+    tipo:tipoSel,dias:[...diasSel].sort(),registros:{}};
+  if(tipoSel==='tiempo')h.metaMin=Math.max(1,+document.getElementById('hMin').value||60);
+  S.habitos.push(h);guardar();cerrarHoja();pintar();}
+function hojaTiempo(id){const h=S.habitos.find(x=>x.id===id);if(!h)return;
+  abrirHoja(`<h3>${h.emoji} ${h.nombre}</h3>
+  <div class="campo"><label>Minutos de hoy (llevas ${minutosEn(h,hoy())} de ${h.metaMin})</label>
+  <input id="minAdd" type="number" inputmode="numeric" placeholder="30"></div>
+  <div class="chips" style="margin-bottom:14px">${[15,30,45,60].map(m=>
+    `<button class="chip" onclick="document.getElementById('minAdd').value=${m}">+${m} min</button>`).join('')}</div>
+  <button class="btn menta" onclick="sumarTiempo('${id}')">Sumar tiempo</button>
+  <div style="height:8px"></div>
+  <button class="btn fant" onclick="resetTiempo('${id}')">Reiniciar el día a 0</button>`);}
+function sumarTiempo(id){const h=S.habitos.find(x=>x.id===id);if(!h)return;
+  const v=+document.getElementById('minAdd').value;
+  if(!v||v<=0){alert('Ingresa los minutos.');return;}
+  const f=hoy();h.registros[f]=minutosEn(h,f)+v;guardar();cerrarHoja();pintar();}
+function resetTiempo(id){const h=S.habitos.find(x=>x.id===id);if(!h)return;
+  delete h.registros[hoy()];guardar();cerrarHoja();pintar();}
+
+/* ══════════ Ajustes: respaldo y exportación ══════════ */
+function abrirAjustes(){abrirHoja(`<h3>Ajustes y respaldo</h3>
+  <p style="font-size:13px;color:var(--muted);line-height:1.5;margin-bottom:14px">
+  Tus datos viven solo en este iPhone. Descarga un respaldo de vez en cuando por si cambias de equipo o borras Safari.</p>
+  <button class="btn fant" onclick="expJSON()">⬇︎ Descargar respaldo (JSON)</button><div style="height:8px"></div>
+  <button class="btn fant" onclick="document.getElementById('impFile').click()">⬆︎ Restaurar respaldo</button><div style="height:8px"></div>
+  <button class="btn fant" onclick="expCSV()">📊 Exportar gastos a CSV (Excel)</button><div style="height:8px"></div>
+  <button class="btn fant" style="color:var(--coral)" onclick="borrarTodo()">Borrar todos los datos</button>
+  <input type="file" id="impFile" accept=".json" style="display:none" onchange="impJSON(event)">`);}
+function descargar(nombre,contenido,tipo){
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([contenido],{type:tipo}));
+  a.download=nombre;a.click();URL.revokeObjectURL(a.href);}
+function expJSON(){descargar('vidaos_respaldo_'+hoy()+'.json',JSON.stringify(S,null,2),'application/json');}
+function impJSON(ev){const f=ev.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{try{const d=JSON.parse(r.result);
+    if(!d.metas||!d.gastos)throw 0;
+    if(confirm('Esto reemplazará tus datos actuales. ¿Continuar?')){S=d;guardar();cerrarHoja();pintar();}
+  }catch(e){alert('El archivo no es un respaldo válido de VidaOS.');}};
+  r.readAsText(f);}
+function expCSV(){
+  const filas=[['fecha','categoria','nota','monto'],
+    ...S.gastos.map(g=>[g.fecha,g.cat,(g.nota||'').replace(/;/g,','),g.monto])];
+  descargar('gastos_vidaos.csv','\uFEFF'+filas.map(f=>f.join(';')).join('\n'),'text/csv');}
+function borrarTodo(){if(confirm('¿Seguro? Se borra TODO: metas, gastos, tareas y hábitos.')&&
+  confirm('Última confirmación: esta acción no se puede deshacer.')){S=porDefecto();guardar();cerrarHoja();pintar();}}
+
+/* ══════════ Arranque ══════════ */
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+pintar();
+</script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "name": "VidaOS",
+  "short_name": "VidaOS",
+  "description": "Panel personal: ahorro, gastos, tareas y hábitos",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0F1216",
+  "theme_color": "#0F1216",
+  "icons": [
+    {"src": "icon.png", "sizes": "180x180", "type": "image/png"},
+    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png"}
+  ]
+}
