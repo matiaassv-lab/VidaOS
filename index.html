@@ -300,12 +300,23 @@ const hoy=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()
 const CLP=n=>'$'+Math.round(n||0).toLocaleString('es-CL');
 const DIAS=['D','L','M','X','J','V','S'];
 const MESES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
-const CATS=[
+const CATS_BASE=[
   {n:'Restaurant',e:'🍽️',c:'#FF7A6B'},{n:'Supermercado',e:'🛒',c:'#E8B84B'},
   {n:'Transporte',e:'🚌',c:'#6BB6FF'},{n:'Gaming',e:'🎮',c:'#5BD6A9'},
   {n:'Salidas',e:'🍻',c:'#FF9DC6'},{n:'Salud',e:'💊',c:'#7FE0E8'},
   {n:'Pastito',e:'🌿',c:'#A3D977'},{n:'Suscripciones',e:'📺',c:'#9D8CFF'},
-  {n:'Regalos',e:'🎁',c:'#FFB86B'},{n:'Otros',e:'📦',c:'#98A2AE'}];
+  {n:'Regalos',e:'🎁',c:'#FFB86B'},{n:'Golfito',e:'⛳',c:'#C7D66B'},
+  {n:'Tarjeta de crédito',e:'💳',c:'#8FA6FF'}];
+const CAT_OTROS={n:'Otros',e:'📦',c:'#98A2AE'};
+const PALETA_EXTRA=['#FF7A6B','#E8B84B','#6BB6FF','#5BD6A9','#FF9DC6','#7FE0E8','#A3D977','#9D8CFF','#FFB86B','#C7D66B','#8FA6FF','#F2A65A','#6BD6D6','#D68FE0'];
+/* Categorías visibles para elegir: base no ocultas + personalizadas, Otros siempre al final */
+function catsActivas(){
+  const oc=S.config.catsOcultas||[],ex=S.config.catsExtra||[];
+  return[...CATS_BASE.filter(c=>!oc.includes(c.n)),...ex,CAT_OTROS];}
+/* Todas, incluidas ocultas: para poder mostrar el ícono correcto de gastos ya registrados */
+function catsTodas(){
+  const ex=S.config.catsExtra||[];
+  return[...CATS_BASE,...ex,CAT_OTROS];}
 
 function porDefecto(){return{
   metas:[
@@ -327,6 +338,8 @@ try{
 }catch(e){hayStorage=false;S=porDefecto();}
 S.config=S.config||{};S.config.presupuestos=S.config.presupuestos||{};
 S.ingresos=S.ingresos||[];S.recurrentes=S.recurrentes||[];
+S.metas.forEach(m=>(m.aportes||[]).forEach(a=>{if(!a.id)a.id=uid();}));
+S.config.catsExtra=S.config.catsExtra||[];S.config.catsOcultas=S.config.catsOcultas||[];
 function guardarSolo(){ if(hayStorage){try{localStorage.setItem(CLAVE,JSON.stringify(S));}catch(e){}} }
 function guardar(){ guardarSolo(); planificarSync(); }
 
@@ -442,7 +455,7 @@ function donut(objId,gastos){
   const orden=Object.entries(porCat).sort((a,b)=>b[1]-a[1]);
   const R=42,C=2*Math.PI*R;let off=0,segs='';
   orden.forEach(([cat,m])=>{
-    const col=(CATS.find(c=>c.n===cat)||CATS[CATS.length-1]).c;
+    const col=(catsTodas().find(c=>c.n===cat)||CAT_OTROS).c;
     const largo=m/tot*C;
     segs+=`<circle cx="55" cy="55" r="${R}" fill="none" stroke="${col}" stroke-width="14"
       stroke-dasharray="${largo-2} ${C-largo+2}" stroke-dashoffset="${-off}" transform="rotate(-90 55 55)"/>`;
@@ -452,7 +465,7 @@ function donut(objId,gastos){
       <text x="55" y="52" text-anchor="middle" fill="var(--text)" font-size="13" font-weight="700" font-family="var(--mono)">${tot>=1e6?(tot/1e6).toFixed(1)+'M':CLP(tot)}</text>
       <text x="55" y="67" text-anchor="middle" fill="var(--muted)" font-size="9">total mes</text></svg>
     <div class="leyenda">${orden.slice(0,5).map(([cat,m])=>{
-      const c=CATS.find(x=>x.n===cat)||CATS[CATS.length-1];
+      const c=catsTodas().find(x=>x.n===cat)||CAT_OTROS;
       return `<div class="li"><span class="sw" style="background:${c.c}"></span>${c.e} ${cat}<span class="lm">${CLP(m)}</span></div>`;}).join('')}
     </div>`;
 }
@@ -521,8 +534,9 @@ function pintar(){
       ${infoPlazo(m)}
       ${proyeccion(m)}
       ${ults.length?`<div style="margin-top:8px">${ults.map(ap=>
-        `<div class="row" style="padding:7px 0"><div class="tx"><div class="t2">${ap.fecha}</div></div>
-         <div class="monto" style="color:var(--oro)">+${CLP(ap.monto)}</div></div>`).join('')}</div>`:''}
+        `<div class="row" style="padding:7px 0" onclick="hojaEditarAporte('${m.id}','${ap.id}')"><div class="tx"><div class="t2">${ap.fecha} · toca para editar</div></div>
+         <div class="monto" style="color:var(--oro)">+${CLP(ap.monto)}</div></div>`).join('')}
+        <button class="lnk" style="padding:6px 0 0" onclick="hojaAportes('${m.id}')">Ver todos los aportes (${m.aportes.length}) ›</button></div>`:''}
       <div class="acts"><button class="btn oro chico" onclick="hojaAporte('${m.id}')">＋ Aporte</button>
       <button class="btn fant chico" onclick="hojaEditarMeta('${m.id}')">Editar</button>
       <button class="btn fant chico" onclick="borrarMeta('${m.id}')">🗑</button></div></div>`;
@@ -553,15 +567,15 @@ function pintar(){
   const movs=[...gv.map(g=>({...g,_t:'g'})),...iv.map(x=>({...x,_t:'i'}))]
     .sort((a,b)=>b.fecha.localeCompare(a.fecha));
   document.getElementById('listaGastos').innerHTML=movs.length?movs.map(m=>{
-    if(m._t==='i')return `<div class="row"><div class="ic" style="background:var(--menta-bg)">💰</div>
-      <div class="tx"><div class="t1">${m.desc}</div><div class="t2">Ingreso · ${m.fecha}</div></div>
+    if(m._t==='i')return `<div class="row" onclick="hojaEditarIngreso('${m.id}')"><div class="ic" style="background:var(--menta-bg)">💰</div>
+      <div class="tx"><div class="t1">${m.desc}</div><div class="t2">Ingreso · ${m.fecha} · toca para editar</div></div>
       <div class="monto" style="color:var(--menta)">+${CLP(m.monto)}</div>
-      <button class="del" onclick="borrarIngreso('${m.id}')">✕</button></div>`;
-    const c=CATS.find(x=>x.n===m.cat)||CATS[CATS.length-1];
-    return `<div class="row"><div class="ic" style="background:${c.c}22">${c.e}</div>
-      <div class="tx"><div class="t1">${m.nota||m.cat}</div><div class="t2">${m.cat} · ${m.fecha}</div></div>
+      <button class="del" onclick="event.stopPropagation();borrarIngreso('${m.id}')">✕</button></div>`;
+    const c=catsTodas().find(x=>x.n===m.cat)||CAT_OTROS;
+    return `<div class="row" onclick="hojaEditarGasto('${m.id}')"><div class="ic" style="background:${c.c}22">${c.e}</div>
+      <div class="tx"><div class="t1">${m.nota||m.cat}</div><div class="t2">${m.cat} · ${m.fecha} · toca para editar</div></div>
       <div class="monto" style="color:var(--coral)">−${CLP(m.monto)}</div>
-      <button class="del" onclick="borrarGasto('${m.id}')">✕</button></div>`;
+      <button class="del" onclick="event.stopPropagation();borrarGasto('${m.id}')">✕</button></div>`;
   }).join(''):'<div class="vacio">Sin movimientos este mes.</div>';
 
   /* — Tareas — */
@@ -625,7 +639,7 @@ function cambiarMes(d){mesVista=new Date(mesVista.getFullYear(),mesVista.getMont
 function renderPresupuestos(gv){
   const el=document.getElementById('listaPres');if(!el)return;
   const P=S.config.presupuestos||{};
-  const conP=CATS.filter(c=>P[c.n]>0);
+  const conP=catsActivas().filter(c=>P[c.n]>0);
   if(!conP.length){el.innerHTML='<div class="vacio">Define topes por categoría para controlar el mes en tiempo real.<br>Toca "Configurar" arriba.</div>';return;}
   el.innerHTML=conP.map(c=>{
     const gasto=gv.filter(g=>g.cat===c.n).reduce((s,g)=>s+g.monto,0);
@@ -640,12 +654,13 @@ function renderPresupuestos(gv){
 function hojaPresupuestos(){
   const P=S.config.presupuestos||{};
   abrirHoja(`<h3>Presupuesto mensual</h3>
-  <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Ponle tope a las categorías que quieras controlar. Deja en blanco las demás.</p>
-  ${CATS.map(c=>`<div class="campo"><label>${c.e} ${c.n}</label>
-  <input id="pres_${c.n}" type="number" inputmode="numeric" placeholder="Sin tope" value="${P[c.n]||''}"></div>`).join('')}
+  <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Ponle tope a las categorías que quieras controlar. Deja en blanco las demás.
+  <button class="lnk" style="font-size:11.5px" onclick="hojaCategorias()">Gestionar categorías ›</button></p>
+  ${catsActivas().map((c,i)=>`<div class="campo"><label>${c.e} ${c.n}</label>
+  <input id="pres_${i}" type="number" inputmode="numeric" placeholder="Sin tope" value="${P[c.n]||''}"></div>`).join('')}
   <button class="btn coral" onclick="guardarPresupuestos()">Guardar presupuestos</button>`);}
 function guardarPresupuestos(){
-  const P={};CATS.forEach(c=>{const v=+document.getElementById('pres_'+c.n).value;if(v>0)P[c.n]=v;});
+  const P={};catsActivas().forEach((c,i)=>{const v=+document.getElementById('pres_'+i).value;if(v>0)P[c.n]=v;});
   S.config.presupuestos=P;guardar();cerrarHoja();pintar();}
 
 /* ══════════ Evolución mensual ══════════ */
@@ -677,7 +692,7 @@ function renderFijos(){
   const totF=S.recurrentes.filter(r=>r.tipo==='gasto').reduce((s,r)=>s+r.monto,0);
   el.innerHTML=S.recurrentes.map(r=>{
     const esI=r.tipo==='ingreso';
-    const c=esI?null:(CATS.find(x=>x.n===r.cat)||CATS[CATS.length-1]);
+    const c=esI?null:(catsTodas().find(x=>x.n===r.cat)||CAT_OTROS);
     return `<div class="row"><div class="ic" style="background:${esI?'var(--menta-bg)':c.c+'22'}">${esI?'💰':c.e}</div>
       <div class="tx"><div class="t1">${r.desc}</div><div class="t2">${esI?'Ingreso fijo':r.cat} · día ${r.dia} de cada mes</div></div>
       <div class="monto" style="color:${esI?'var(--menta)':'var(--coral)'}">${esI?'+':'−'}${CLP(r.monto)}</div>
@@ -691,7 +706,7 @@ function hojaNuevoFijo(){fijoTipo='gasto';fijoCat='Suscripciones';
     <button class="chip" id="fjI" onclick="selFijoTipo('ingreso')">＋ Ingreso fijo</button></div></div>
   ${inp('fMonto','Monto (CLP)','12990','number','','inputmode="numeric"')}
   ${inp('fDesc','Descripción','Netflix / Sueldo')}
-  <div class="campo" id="fCatWrap"><label>Categoría</label><div class="chips" id="fChips">${CATS.map(c=>
+  <div class="campo" id="fCatWrap"><label>Categoría</label><div class="chips" id="fChips">${catsActivas().map(c=>
     `<button class="chip ${c.n===fijoCat?'oncat':''}" onclick="selFijoCat('${c.n}')">${c.e} ${c.n}</button>`).join('')}</div></div>
   ${inp('fDia','Día del mes (1 a 28)','5','number','5','min="1" max="28"')}
   <button class="btn coral" onclick="guardarFijo()">Guardar fijo</button>`);}
@@ -728,6 +743,38 @@ function aplicarRecurrentes(){
       d.setMonth(d.getMonth()+1);}});
   if(cambio)guardarSolo();}
 
+
+/* ══════════ Gestión de categorías ══════════ */
+function hojaCategorias(){
+  const oc=S.config.catsOcultas||[];
+  abrirHoja(`<h3>Categorías de gastos</h3>
+  <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Desactiva las que no uses o crea las tuyas. Los gastos ya registrados no se pierden.</p>
+  <div class="chips" style="margin-bottom:16px">${CATS_BASE.map(c=>
+    `<button class="chip ${oc.includes(c.n)?'':'oncat'}" onclick="toggleCat('${c.n}')">${c.e} ${c.n}</button>`).join('')}</div>
+  ${(S.config.catsExtra||[]).length?`<div style="font-size:12px;color:var(--muted);margin-bottom:8px">Tus categorías</div>
+  <div class="chips" style="margin-bottom:16px">${S.config.catsExtra.map(c=>
+    `<button class="chip oncat" onclick="borrarCatExtra('${c.n}')">${c.e} ${c.n} ✕</button>`).join('')}</div>`:''}
+  <div class="campo"><label>Nueva categoría</label>
+  <input id="ncNom" type="text" placeholder="Nombre, ej: Mascota"></div>
+  <div class="campo"><label>Emoji</label><input id="ncEmo" type="text" placeholder="🐾" value="🏷️"></div>
+  <button class="btn coral" onclick="crearCategoria()">Crear categoría</button>`);}
+function toggleCat(n){
+  const oc=S.config.catsOcultas||[];const i=oc.indexOf(n);
+  if(i>=0)oc.splice(i,1);else oc.push(n);
+  S.config.catsOcultas=oc;guardar();hojaCategorias();}
+function crearCategoria(){
+  const n=document.getElementById('ncNom').value.trim();
+  if(!n){alert('Ponle un nombre a la categoría.');return;}
+  if(catsTodas().some(c=>c.n.toLowerCase()===n.toLowerCase())){alert('Ya existe una categoría con ese nombre.');return;}
+  const ex=S.config.catsExtra||[];
+  const col=PALETA_EXTRA[ex.length%PALETA_EXTRA.length];
+  ex.push({n,e:document.getElementById('ncEmo').value.trim()||'🏷️',c:col});
+  S.config.catsExtra=ex;guardar();hojaCategorias();}
+function borrarCatExtra(n){
+  const usada=S.gastos.some(g=>g.cat===n)||S.recurrentes.some(r=>r.cat===n);
+  if(usada&&!confirm('Esta categoría tiene gastos registrados. Si la borras, esos gastos se mostrarán como "Otros". ¿Continuar?'))return;
+  S.config.catsExtra=(S.config.catsExtra||[]).filter(c=>c.n!==n);guardar();hojaCategorias();}
+
 /* ══════════ Ingresos ══════════ */
 function hojaNuevoIngreso(){abrirHoja(`<h3>Registrar ingreso</h3>
   ${inp('iMonto','Monto (CLP)','1500000','number','','inputmode="numeric"')}
@@ -740,6 +787,20 @@ function guardarIngreso(){const m=+document.getElementById('iMonto').value;
     fecha:document.getElementById('iFecha').value||hoy()});
   guardar();cerrarHoja();pintar();}
 function borrarIngreso(id){S.ingresos=S.ingresos.filter(i=>i.id!==id);guardar();pintar();}
+function hojaEditarIngreso(id){const i=S.ingresos.find(x=>x.id===id);if(!i)return;
+  abrirHoja(`<h3>Editar ingreso</h3>
+  ${inp('iMonto','Monto (CLP)','','number',i.monto,'inputmode="numeric"')}
+  ${inp('iDesc','Descripción','','text',i.desc)}
+  ${inp('iFecha','Fecha','','date',i.fecha)}
+  <button class="btn menta" onclick="actualizarIngreso('${id}')">Guardar cambios</button>
+  <div style="height:8px"></div>
+  <button class="btn fant" onclick="borrarIngreso('${id}');cerrarHoja()">🗑 Eliminar ingreso</button>`);}
+function actualizarIngreso(id){const i=S.ingresos.find(x=>x.id===id);if(!i)return;
+  const m=+document.getElementById('iMonto').value;
+  if(!m||m<=0){alert('Ingresa un monto válido.');return;}
+  i.monto=m;i.desc=document.getElementById('iDesc').value.trim()||'Ingreso';
+  i.fecha=document.getElementById('iFecha').value||i.fecha;
+  guardar();cerrarHoja();pintar();}
 
 /* ══════════ Proyección de metas ══════════ */
 function proyeccion(m){
@@ -797,7 +858,8 @@ let catSel='Restaurant';
 function hojaNuevoGasto(){catSel='Restaurant';
   abrirHoja(`<h3>Registrar gasto</h3>
     ${inp('gMonto','Monto (CLP)','15000','number','','inputmode="numeric"')}
-    <div class="campo"><label>Categoría</label><div class="chips" id="gChips">${CATS.map(c=>
+    <div class="campo"><label>Categoría <button class="lnk" style="font-size:11.5px" onclick="hojaCategorias()">gestionar ›</button></label>
+    <div class="chips" id="gChips">${catsActivas().map(c=>
       `<button class="chip ${c.n===catSel?'oncat':''}" onclick="selCat('${c.n}')">${c.e} ${c.n}</button>`).join('')}</div></div>
     ${inp('gNota','Nota (opcional)','Almuerzo con el equipo')}
     ${inp('gFecha','Fecha','','date',hoy())}
@@ -809,6 +871,23 @@ function guardarGasto(){
   if(!m||m<=0){alert('Ingresa un monto válido.');return;}
   S.gastos.push({id:uid(),monto:m,cat:catSel,nota:document.getElementById('gNota').value.trim(),
     fecha:document.getElementById('gFecha').value||hoy()});
+  guardar();cerrarHoja();pintar();}
+function hojaEditarGasto(id){const g=S.gastos.find(x=>x.id===id);if(!g)return;catSel=g.cat;
+  abrirHoja(`<h3>Editar gasto</h3>
+    ${inp('gMonto','Monto (CLP)','','number',g.monto,'inputmode="numeric"')}
+    <div class="campo"><label>Categoría <button class="lnk" style="font-size:11.5px" onclick="hojaCategorias()">gestionar ›</button></label>
+    <div class="chips" id="gChips">${catsActivas().map(c=>
+      `<button class="chip ${c.n===catSel?'oncat':''}" onclick="selCat('${c.n}')">${c.e} ${c.n}</button>`).join('')}</div></div>
+    ${inp('gNota','Nota (opcional)','','text',g.nota||'')}
+    ${inp('gFecha','Fecha','','date',g.fecha)}
+    <button class="btn coral" onclick="actualizarGasto('${id}')">Guardar cambios</button>
+    <div style="height:8px"></div>
+    <button class="btn fant" onclick="borrarGasto('${id}');cerrarHoja()">🗑 Eliminar gasto</button>`);}
+function actualizarGasto(id){const g=S.gastos.find(x=>x.id===id);if(!g)return;
+  const m=+document.getElementById('gMonto').value;
+  if(!m||m<=0){alert('Ingresa un monto válido.');return;}
+  g.monto=m;g.cat=catSel;g.nota=document.getElementById('gNota').value.trim();
+  g.fecha=document.getElementById('gFecha').value||g.fecha;
   guardar();cerrarHoja();pintar();}
 
 /* — Tarea — */
@@ -855,8 +934,32 @@ function hojaAporte(id){const m=S.metas.find(x=>x.id===id);if(!m)return;
 function guardarAporte(id){const m=S.metas.find(x=>x.id===id);if(!m)return;
   const v=+document.getElementById('aMonto').value;
   if(!v||v<=0){alert('Ingresa un monto válido.');return;}
-  m.aportes.push({monto:v,fecha:document.getElementById('aFecha').value||hoy()});
+  m.aportes.push({id:uid(),monto:v,fecha:document.getElementById('aFecha').value||hoy()});
   guardar();cerrarHoja();pintar();}
+function hojaAportes(mId){const m=S.metas.find(x=>x.id===mId);if(!m)return;
+  const ord=[...m.aportes].sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  abrirHoja(`<h3>Aportes a "${m.nombre}"</h3>
+  ${ord.map(ap=>`<div class="row" onclick="hojaEditarAporte('${mId}','${ap.id}')">
+    <div class="tx"><div class="t2">${ap.fecha} · toca para editar</div></div>
+    <div class="monto" style="color:var(--oro)">+${CLP(ap.monto)}</div></div>`).join('')||'<div class="vacio">Aún no hay aportes.</div>'}
+  <div class="fila-btn"><button class="btn oro" onclick="hojaAporte('${mId}')">＋ Nuevo aporte</button></div>`);}
+function hojaEditarAporte(mId,apId){const m=S.metas.find(x=>x.id===mId);if(!m)return;
+  const ap=m.aportes.find(x=>x.id===apId);if(!ap)return;
+  abrirHoja(`<h3>Editar aporte</h3>
+  ${inp('aMonto','Monto (CLP)','','number',ap.monto,'inputmode="numeric"')}
+  ${inp('aFecha','Fecha','','date',ap.fecha)}
+  <button class="btn oro" onclick="actualizarAporte('${mId}','${apId}')">Guardar cambios</button>
+  <div style="height:8px"></div>
+  <button class="btn fant" onclick="borrarAporte('${mId}','${apId}')">🗑 Eliminar aporte</button>`);}
+function actualizarAporte(mId,apId){const m=S.metas.find(x=>x.id===mId);if(!m)return;
+  const ap=m.aportes.find(x=>x.id===apId);if(!ap)return;
+  const v=+document.getElementById('aMonto').value;
+  if(!v||v<=0){alert('Ingresa un monto válido.');return;}
+  ap.monto=v;ap.fecha=document.getElementById('aFecha').value||ap.fecha;
+  guardar();cerrarHoja();pintar();}
+function borrarAporte(mId,apId){const m=S.metas.find(x=>x.id===mId);if(!m)return;
+  if(!confirm('¿Eliminar este aporte?'))return;
+  m.aportes=m.aportes.filter(a=>a.id!==apId);guardar();cerrarHoja();pintar();}
 
 /* — Hábito — */
 let diasSel=[1,2,3,4,5],tipoSel='check';
@@ -943,6 +1046,8 @@ function impJSON(ev){const f=ev.target.files[0];if(!f)return;
     if(confirm('Esto reemplazará tus datos actuales. ¿Continuar?')){S=d;
       S.config=S.config||{};S.config.presupuestos=S.config.presupuestos||{};
       S.ingresos=S.ingresos||[];S.recurrentes=S.recurrentes||[];
+S.metas.forEach(m=>(m.aportes||[]).forEach(a=>{if(!a.id)a.id=uid();}));
+S.config.catsExtra=S.config.catsExtra||[];S.config.catsOcultas=S.config.catsOcultas||[];
       guardar();cerrarHoja();pintar();}
   }catch(e){alert('El archivo no es un respaldo válido de VidaOS.');}};
   r.readAsText(f);}
