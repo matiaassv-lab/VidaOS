@@ -228,7 +228,7 @@ nav{position:fixed;left:0;right:0;bottom:0;z-index:30;
     <div class="fila-btn"><button class="btn oro" onclick="hojaNuevaMeta()">＋ Nueva meta</button></div>
   </section>
 
-  <!-- ════ GASTOS ════ -->
+  <!-- ════ FINANZAS ════ -->
   <section class="view" id="v-gastos">
     <div class="mesnav">
       <button onclick="cambiarMes(-1)">‹</button>
@@ -236,8 +236,18 @@ nav{position:fixed;left:0;right:0;bottom:0;z-index:30;
       <button onclick="cambiarMes(1)">›</button>
     </div>
     <div class="kpis" id="kpisGastos"></div>
+    <div class="fila-btn">
+      <button class="btn coral" onclick="hojaNuevoGasto()">− Gasto</button>
+      <button class="btn menta" onclick="hojaNuevoIngreso()">＋ Ingreso</button>
+    </div>
+    <div class="sect"><h2>Presupuesto del mes</h2><button class="lnk" onclick="hojaPresupuestos()">Configurar ›</button></div>
+    <div class="card" id="listaPres"></div>
+    <div class="sect"><h2>Por categoría</h2></div>
     <div class="card"><div class="grafico" id="donutGastos2"></div></div>
-    <div class="fila-btn"><button class="btn coral" onclick="hojaNuevoGasto()">＋ Registrar gasto</button></div>
+    <div class="sect"><h2>Últimos 6 meses</h2></div>
+    <div class="card" id="evoMensual"></div>
+    <div class="sect"><h2>Fijos mensuales</h2><button class="lnk" onclick="hojaNuevoFijo()">＋ Agregar ›</button></div>
+    <div class="card" id="listaFijos"></div>
     <div class="sect"><h2>Movimientos</h2></div>
     <div class="card" id="listaGastos"></div>
   </section>
@@ -271,7 +281,7 @@ nav{position:fixed;left:0;right:0;bottom:0;z-index:30;
   <button class="tab t-ahorro" data-tab="ahorro" onclick="irTab('ahorro')">
     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><path d="M12 10.7v2.6"/></svg>Ahorro</button>
   <button class="tab t-gastos" data-tab="gastos" onclick="irTab('gastos')">
-    <svg viewBox="0 0 24 24"><path d="M6 3h12v18l-2-1.4L14 21l-2-1.4L10 21l-2-1.4L6 21z"/><path d="M9.5 8h5M9.5 12h5"/></svg>Gastos</button>
+    <svg viewBox="0 0 24 24"><path d="M6 3h12v18l-2-1.4L14 21l-2-1.4L10 21l-2-1.4L6 21z"/><path d="M9.5 8h5M9.5 12h5"/></svg>Finanzas</button>
   <button class="tab t-tareas" data-tab="tareas" onclick="irTab('tareas')">
     <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="m8.5 12.2 2.4 2.4 4.6-5"/></svg>Tareas</button>
   <button class="tab t-habitos" data-tab="habitos" onclick="irTab('habitos')">
@@ -286,14 +296,15 @@ const CLP=n=>'$'+Math.round(n||0).toLocaleString('es-CL');
 const DIAS=['D','L','M','X','J','V','S'];
 const MESES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 const CATS=[
-  {n:'Comida',e:'🍽️',c:'#FF7A6B'},{n:'Supermercado',e:'🛒',c:'#E8B84B'},
-  {n:'Transporte',e:'🚌',c:'#6BB6FF'},{n:'Casa',e:'🏠',c:'#9D8CFF'},
-  {n:'Gaming',e:'🎮',c:'#5BD6A9'},{n:'Ocio',e:'🎬',c:'#FF9DC6'},
-  {n:'Salud',e:'💊',c:'#7FE0E8'},{n:'Otros',e:'📦',c:'#98A2AE'}];
+  {n:'Restaurant',e:'🍽️',c:'#FF7A6B'},{n:'Supermercado',e:'🛒',c:'#E8B84B'},
+  {n:'Transporte',e:'🚌',c:'#6BB6FF'},{n:'Gaming',e:'🎮',c:'#5BD6A9'},
+  {n:'Salidas',e:'🍻',c:'#FF9DC6'},{n:'Salud',e:'💊',c:'#7FE0E8'},
+  {n:'Pastito',e:'🌿',c:'#A3D977'},{n:'Suscripciones',e:'📺',c:'#9D8CFF'},
+  {n:'Regalos',e:'🎁',c:'#FFB86B'},{n:'Otros',e:'📦',c:'#98A2AE'}];
 
 function porDefecto(){return{
   metas:[
-    {id:uid(),nombre:'Cambio de casa 2027',emoji:'🏠',objetivo:5000000,aportes:[]},
+    {id:uid(),nombre:'Cambio de casa 2027',emoji:'🏠',objetivo:5000000,fechaLimite:'2027-06-30',aportes:[]},
     {id:uid(),nombre:'Tarjeta gráfica',emoji:'🎮',objetivo:900000,aportes:[]}
   ],
   gastos:[],
@@ -309,7 +320,59 @@ try{
   localStorage.setItem('__t','1');localStorage.removeItem('__t');
   S=JSON.parse(localStorage.getItem(CLAVE))||porDefecto();
 }catch(e){hayStorage=false;S=porDefecto();}
-function guardar(){ if(hayStorage){try{localStorage.setItem(CLAVE,JSON.stringify(S));}catch(e){}} }
+S.config=S.config||{};S.config.presupuestos=S.config.presupuestos||{};
+S.ingresos=S.ingresos||[];S.recurrentes=S.recurrentes||[];
+function guardarSolo(){ if(hayStorage){try{localStorage.setItem(CLAVE,JSON.stringify(S));}catch(e){}} }
+function guardar(){ guardarSolo(); planificarSync(); }
+
+/* ══════════ Sincronización del widget (Gist de GitHub) ══════════ */
+let syncTimer=null;
+function planificarSync(){ if(!S.config.ghToken)return; clearTimeout(syncTimer); syncTimer=setTimeout(()=>sincronizarWidget(false),3000); }
+function resumenWidget(){
+  const a=new Date(),gM=gastosDeMes(a.getFullYear(),a.getMonth());
+  return{actualizado:a.toISOString(),mes:MESES[a.getMonth()],
+    gastoMes:gM.reduce((s,g)=>s+g.monto,0),movimientos:gM.length,
+    ingresoMes:ingresosDeMes(a.getFullYear(),a.getMonth()).reduce((s,i)=>s+i.monto,0),
+    tareasPend:S.tareas.filter(t=>!t.hecha).length,
+    xp:xpDelDia().pct,ahorroTotal:S.metas.reduce((s,m)=>s+ahorradoDe(m),0)};}
+async function sincronizarWidget(manual){
+  const tk=S.config.ghToken;
+  if(!tk){if(manual)alert('Primero pega tu token de GitHub.');return;}
+  const body={description:'VidaOS · datos del widget',public:false,
+    files:{'vidaos_widget.json':{content:JSON.stringify(resumenWidget(),null,2)}}};
+  try{
+    const url=S.config.gistId?'https://api.github.com/gists/'+S.config.gistId:'https://api.github.com/gists';
+    const r=await fetch(url,{method:S.config.gistId?'PATCH':'POST',
+      headers:{'Authorization':'token '+tk,'Accept':'application/vnd.github+json'},
+      body:JSON.stringify(body)});
+    if(r.status===404&&S.config.gistId){S.config.gistId=null;guardarSolo();return sincronizarWidget(manual);}
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const d=await r.json();
+    if(d.id&&d.id!==S.config.gistId){S.config.gistId=d.id;guardarSolo();}
+    const est=document.getElementById('syncEstado');
+    if(est)est.innerHTML='✓ Sincronizado. <b>ID del widget:</b><br><code style="font-size:11px;word-break:break-all">'+S.config.gistId+'</code>';
+    if(manual&&!est)alert('✓ Sincronizado. ID del widget: '+S.config.gistId);
+  }catch(e){
+    const est=document.getElementById('syncEstado');
+    const msg='✗ No se pudo sincronizar ('+e.message+'). Revisa el token y tu conexión.';
+    if(est)est.textContent=msg; else if(manual)alert(msg);
+  }}
+
+/* ══════════ Badge del ícono (tareas pendientes) ══════════ */
+function actualizarBadge(){
+  if(!('setAppBadge' in navigator))return;
+  const p=S.tareas.filter(t=>!t.hecha).length;
+  (p>0?navigator.setAppBadge(p):navigator.clearAppBadge()).catch(()=>{});}
+async function activarBadge(){
+  if(!('setAppBadge' in navigator)){
+    alert('Este dispositivo no soporta badges en apps web. Necesitas iOS 16.4+ y abrir VidaOS desde el ícono instalado en la pantalla de inicio (no desde Safari).');return;}
+  try{
+    if('Notification' in window&&Notification.permission!=='granted'){
+      const p=await Notification.requestPermission();
+      if(p!=='granted'){alert('Sin el permiso de notificaciones, iOS no muestra el badge.');return;}}
+    actualizarBadge();
+    alert('✓ Badge activado. El ícono mostrará tus tareas pendientes.');
+  }catch(e){alert('No se pudo activar: '+e.message);}}
 
 /* ══════════ Navegación ══════════ */
 let mesVista=new Date();
@@ -323,7 +386,18 @@ function irTab(t){
 
 /* ══════════ Cálculos ══════════ */
 const ahorradoDe=m=>m.aportes.reduce((s,a)=>s+a.monto,0);
+const fmtFecha=f=>{const[y,mo,d]=f.split('-');return +d+' '+MESES[+mo-1].slice(0,3)+' '+y;};
+function infoPlazo(m){
+  if(!m.fechaLimite)return'';
+  const a=ahorradoDe(m),resta=Math.max(0,m.objetivo-a);
+  if(a>=m.objetivo)return`<div class="t2" style="margin-top:7px;color:var(--menta)">🎉 ¡Meta cumplida!</div>`;
+  const dias=Math.ceil((new Date(m.fechaLimite+'T12:00:00')-new Date())/86400000);
+  if(dias<0)return`<div class="t2" style="margin-top:7px;color:var(--coral)">⏰ Plazo vencido el ${fmtFecha(m.fechaLimite)}</div>`;
+  const meses=Math.max(1,Math.round(dias/30.44)),mensual=Math.ceil(resta/meses);
+  return`<div class="t2" style="margin-top:7px">📅 Límite ${fmtFecha(m.fechaLimite)} (${dias} días) · necesitas ~<b style="color:var(--oro)">${CLP(mensual)}/mes</b></div>`;}
 const gastosDeMes=(y,mo)=>S.gastos.filter(g=>{const[a,m]=g.fecha.split('-');return +a===y&&+m===mo+1;});
+const ingresosDeMes=(y,mo)=>S.ingresos.filter(i=>{const[a,m]=i.fecha.split('-');return +a===y&&+m===mo+1;});
+const CLPk=n=>n>=1e6?('$'+(n/1e6).toFixed(1).replace('.',',')+'M'):n>=1000?('$'+Math.round(n/1000)+'k'):('$'+Math.round(n||0));
 
 function programadoHoy(h){return h.dias.includes(new Date().getDay());}
 function cumplidoEn(h,f){
@@ -363,7 +437,7 @@ function donut(objId,gastos){
   const orden=Object.entries(porCat).sort((a,b)=>b[1]-a[1]);
   const R=42,C=2*Math.PI*R;let off=0,segs='';
   orden.forEach(([cat,m])=>{
-    const col=(CATS.find(c=>c.n===cat)||CATS[7]).c;
+    const col=(CATS.find(c=>c.n===cat)||CATS[CATS.length-1]).c;
     const largo=m/tot*C;
     segs+=`<circle cx="55" cy="55" r="${R}" fill="none" stroke="${col}" stroke-width="14"
       stroke-dasharray="${largo-2} ${C-largo+2}" stroke-dashoffset="${-off}" transform="rotate(-90 55 55)"/>`;
@@ -373,7 +447,7 @@ function donut(objId,gastos){
       <text x="55" y="52" text-anchor="middle" fill="var(--text)" font-size="13" font-weight="700" font-family="var(--mono)">${tot>=1e6?(tot/1e6).toFixed(1)+'M':CLP(tot)}</text>
       <text x="55" y="67" text-anchor="middle" fill="var(--muted)" font-size="9">total mes</text></svg>
     <div class="leyenda">${orden.slice(0,5).map(([cat,m])=>{
-      const c=CATS.find(x=>x.n===cat)||CATS[7];
+      const c=CATS.find(x=>x.n===cat)||CATS[CATS.length-1];
       return `<div class="li"><span class="sw" style="background:${c.c}"></span>${c.e} ${cat}<span class="lm">${CLP(m)}</span></div>`;}).join('')}
     </div>`;
 }
@@ -439,6 +513,8 @@ function pintar(){
       <div><div class="nom">${m.nombre}</div><div class="cifra"><b>${CLP(a)}</b> de ${CLP(m.objetivo)} · faltan ${CLP(Math.max(0,m.objetivo-a))}</div></div>
       <div class="pctm">${Math.round(p)}%</div></div>
       <div class="pbar"><div class="pfill" style="width:${p}%;background:var(--oro)"></div></div>
+      ${infoPlazo(m)}
+      ${proyeccion(m)}
       ${ults.length?`<div style="margin-top:8px">${ults.map(ap=>
         `<div class="row" style="padding:7px 0"><div class="tx"><div class="t2">${ap.fecha}</div></div>
          <div class="monto" style="color:var(--oro)">+${CLP(ap.monto)}</div></div>`).join('')}</div>`:''}
@@ -447,24 +523,40 @@ function pintar(){
       <button class="btn fant chico" onclick="borrarMeta('${m.id}')">🗑</button></div></div>`;
   }).join('')||'<div class="card vacio">Crea tu primera meta de ahorro 🎯</div>';
 
-  /* — Gastos — */
+  /* — Finanzas — */
   const y=mesVista.getFullYear(),mo=mesVista.getMonth();
   document.getElementById('mesLabel').textContent=MESES[mo]+' '+y;
   const gv=gastosDeMes(y,mo).sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  const iv=ingresosDeMes(y,mo).sort((a,b)=>b.fecha.localeCompare(a.fecha));
   const totV=gv.reduce((s,g)=>s+g.monto,0);
-  const dias=new Set(gv.map(g=>g.fecha)).size||1;
+  const totI=iv.reduce((s,i)=>s+i.monto,0);
+  const balance=totI-totV;
+  const tasa=totI>0?Math.round(balance/totI*100):null;
   document.getElementById('kpisGastos').innerHTML=`
-    <div class="kpi coral"><div class="lab">Total del mes</div><div class="val">${CLP(totV)}</div>
+    <div class="kpi menta"><div class="lab">Ingresos</div><div class="val">${CLP(totI)}</div>
+      <div class="sub">${iv.length} registro${iv.length===1?'':'s'}</div></div>
+    <div class="kpi coral"><div class="lab">Gastos</div><div class="val">${CLP(totV)}</div>
       <div class="sub">${gv.length} movimiento${gv.length===1?'':'s'}</div></div>
-    <div class="kpi coral"><div class="lab">Promedio diario</div><div class="val">${CLP(totV/dias)}</div>
-      <div class="sub">en días con gasto</div></div>`;
+    <div class="kpi"><div class="lab">Balance</div><div class="val" style="color:${balance>=0?'var(--menta)':'var(--coral)'}">${balance<0?'−':''}${CLP(Math.abs(balance))}</div>
+      <div class="sub">${balance>=0?'mes positivo ✓':'mes en rojo'}</div></div>
+    <div class="kpi"><div class="lab">Tasa de ahorro</div><div class="val" style="color:${tasa===null?'var(--dim)':tasa>=20?'var(--menta)':tasa>=0?'var(--oro)':'var(--coral)'}">${tasa===null?'—':tasa+'%'}</div>
+      <div class="sub">${tasa===null?'registra ingresos':'del ingreso queda libre'}</div></div>`;
+  renderPresupuestos(gv);
   donut('donutGastos2',gv);
-  document.getElementById('listaGastos').innerHTML=gv.length?gv.map(g=>{
-    const c=CATS.find(x=>x.n===g.cat)||CATS[7];
+  evolucion();
+  renderFijos();
+  const movs=[...gv.map(g=>({...g,_t:'g'})),...iv.map(x=>({...x,_t:'i'}))]
+    .sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  document.getElementById('listaGastos').innerHTML=movs.length?movs.map(m=>{
+    if(m._t==='i')return `<div class="row"><div class="ic" style="background:var(--menta-bg)">💰</div>
+      <div class="tx"><div class="t1">${m.desc}</div><div class="t2">Ingreso · ${m.fecha}</div></div>
+      <div class="monto" style="color:var(--menta)">+${CLP(m.monto)}</div>
+      <button class="del" onclick="borrarIngreso('${m.id}')">✕</button></div>`;
+    const c=CATS.find(x=>x.n===m.cat)||CATS[CATS.length-1];
     return `<div class="row"><div class="ic" style="background:${c.c}22">${c.e}</div>
-      <div class="tx"><div class="t1">${g.nota||g.cat}</div><div class="t2">${g.cat} · ${g.fecha}</div></div>
-      <div class="monto" style="color:var(--coral)">−${CLP(g.monto)}</div>
-      <button class="del" onclick="borrarGasto('${g.id}')">✕</button></div>`;
+      <div class="tx"><div class="t1">${m.nota||m.cat}</div><div class="t2">${m.cat} · ${m.fecha}</div></div>
+      <div class="monto" style="color:var(--coral)">−${CLP(m.monto)}</div>
+      <button class="del" onclick="borrarGasto('${m.id}')">✕</button></div>`;
   }).join(''):'<div class="vacio">Sin movimientos este mes.</div>';
 
   /* — Tareas — */
@@ -490,8 +582,9 @@ function pintar(){
       const d=new Date();d.setDate(d.getDate()-(6-i));
       const fd=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
       const prog=h.dias.includes(d.getDay()),done=cumplidoEn(h,fd);
+      const accion=h.tipo==='check'?`marcarDia('${h.id}','${fd}')`:`hojaTiempo('${h.id}','${fd}')`;
       return `<div class="dia"><div class="dlab">${DIAS[d.getDay()]}</div>
-        <div class="dot ${done?'hecho':''} ${prog?'':'libre'} ${fd===f?'hoy':''}">${done?'✓':(h.tipo==='tiempo'&&minutosEn(h,fd)?minutosEn(h,fd):'')}</div></div>`;
+        <div class="dot ${done?'hecho':''} ${prog?'':'libre'} ${fd===f?'hoy':''}" onclick="${accion}">${done?'✓':(h.tipo==='tiempo'&&minutosEn(h,fd)?minutosEn(h,fd):'')}</div></div>`;
     }).join('');
     const detalle=h.tipo==='tiempo'
       ?`Meta ${h.metaMin} min/día · hoy ${minutosEn(h,f)} min`
@@ -501,10 +594,12 @@ function pintar(){
       <div class="racha">${detalle} · <b>${racha(h)}🔥</b></div></div>
       ${h.tipo==='check'?`<button class="chk ${ok?'ok':''}" style="width:30px;height:30px" onclick="toggleHabito('${h.id}')">✓</button>`:''}</div>
       <div class="semana">${semana}</div>
+      <div style="font-size:10.5px;color:var(--dim);margin-top:7px;text-align:center">Toca un día para marcarlo o corregirlo</div>
       <div class="hbtns">
         ${h.tipo==='tiempo'?`<button class="btn menta chico" onclick="hojaTiempo('${h.id}')">＋ Registrar tiempo</button>`:''}
         <button class="btn fant chico" onclick="borrarHabito('${h.id}')">🗑</button></div></div>`;
   }).join('')||'<div class="card vacio">Crea tu primer hábito 🌱</div>';
+  actualizarBadge();
 }
 /* ══════════ Acciones ══════════ */
 function toggleTarea(id){const t=S.tareas.find(x=>x.id===id);if(!t)return;
@@ -520,6 +615,145 @@ function borrarMeta(id){if(!confirm('¿Eliminar esta meta y sus aportes?'))retur
   S.metas=S.metas.filter(m=>m.id!==id);guardar();pintar();}
 function cambiarMes(d){mesVista=new Date(mesVista.getFullYear(),mesVista.getMonth()+d,1);pintar();}
 
+
+/* ══════════ Presupuestos por categoría ══════════ */
+function renderPresupuestos(gv){
+  const el=document.getElementById('listaPres');if(!el)return;
+  const P=S.config.presupuestos||{};
+  const conP=CATS.filter(c=>P[c.n]>0);
+  if(!conP.length){el.innerHTML='<div class="vacio">Define topes por categoría para controlar el mes en tiempo real.<br>Toca "Configurar" arriba.</div>';return;}
+  el.innerHTML=conP.map(c=>{
+    const gasto=gv.filter(g=>g.cat===c.n).reduce((s,g)=>s+g.monto,0);
+    const p=Math.min(100,gasto/P[c.n]*100);
+    const col=gasto>=P[c.n]?'var(--coral)':(p>=75?'var(--oro)':'var(--menta)');
+    const resta=P[c.n]-gasto;
+    return `<div style="margin-top:11px"><div style="display:flex;justify-content:space-between;align-items:baseline;font-size:13.5px">
+      <span>${c.e} ${c.n}</span><span class="monto" style="font-size:12px;color:${col}">${CLP(gasto)} / ${CLP(P[c.n])}</span></div>
+      <div class="pbar"><div class="pfill" style="width:${p}%;background:${col}"></div></div>
+      <div class="t2" style="margin-top:3px">${resta>=0?'Quedan '+CLP(resta):'⚠️ Excedido en '+CLP(-resta)}</div></div>`;
+  }).join('');}
+function hojaPresupuestos(){
+  const P=S.config.presupuestos||{};
+  abrirHoja(`<h3>Presupuesto mensual</h3>
+  <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Ponle tope a las categorías que quieras controlar. Deja en blanco las demás.</p>
+  ${CATS.map(c=>`<div class="campo"><label>${c.e} ${c.n}</label>
+  <input id="pres_${c.n}" type="number" inputmode="numeric" placeholder="Sin tope" value="${P[c.n]||''}"></div>`).join('')}
+  <button class="btn coral" onclick="guardarPresupuestos()">Guardar presupuestos</button>`);}
+function guardarPresupuestos(){
+  const P={};CATS.forEach(c=>{const v=+document.getElementById('pres_'+c.n).value;if(v>0)P[c.n]=v;});
+  S.config.presupuestos=P;guardar();cerrarHoja();pintar();}
+
+/* ══════════ Evolución mensual ══════════ */
+function evolucion(){
+  const el=document.getElementById('evoMensual');if(!el)return;
+  const ahora=new Date(),datos=[];
+  for(let i=5;i>=0;i--){
+    const d=new Date(ahora.getFullYear(),ahora.getMonth()-i,1);
+    datos.push({lab:MESES[d.getMonth()].slice(0,3),
+      tot:gastosDeMes(d.getFullYear(),d.getMonth()).reduce((s,g)=>s+g.monto,0)});}
+  if(datos.every(x=>!x.tot)){el.innerHTML='<div class="vacio">Aún no hay historial suficiente.</div>';return;}
+  const max=Math.max(...datos.map(x=>x.tot),1),W=330,H=122,bw=W/6;
+  let svg='';
+  datos.forEach((x,i)=>{
+    const bh=Math.round(x.tot/max*70),yb=96-bh,ult=i===5;
+    svg+=`<rect x="${i*bw+9}" y="${yb}" width="${bw-18}" height="${bh||2}" rx="6" fill="${ult?'var(--coral)':'#313A46'}"/>
+    <text x="${i*bw+bw/2}" y="${yb-6}" text-anchor="middle" fill="${ult?'var(--text)':'var(--muted)'}" font-size="9.5" font-family="var(--mono)">${x.tot?CLPk(x.tot):''}</text>
+    <text x="${i*bw+bw/2}" y="114" text-anchor="middle" fill="var(--muted)" font-size="10">${x.lab}</text>`;});
+  let varTxt='';
+  const prev=datos[4].tot,cur=datos[5].tot;
+  if(prev>0){const v=Math.round((cur-prev)/prev*100);
+    varTxt=`<div class="t2" style="margin-top:4px;text-align:center">Este mes vs anterior: <b style="color:${v<=0?'var(--menta)':'var(--coral)'}">${v>0?'+':''}${v}%</b></div>`;}
+  el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%">${svg}</svg>${varTxt}`;}
+
+/* ══════════ Fijos mensuales ══════════ */
+function renderFijos(){
+  const el=document.getElementById('listaFijos');if(!el)return;
+  if(!S.recurrentes.length){el.innerHTML='<div class="vacio">Registra tus suscripciones, cuentas o sueldo y se anotarán solos cada mes.</div>';return;}
+  const totF=S.recurrentes.filter(r=>r.tipo==='gasto').reduce((s,r)=>s+r.monto,0);
+  el.innerHTML=S.recurrentes.map(r=>{
+    const esI=r.tipo==='ingreso';
+    const c=esI?null:(CATS.find(x=>x.n===r.cat)||CATS[CATS.length-1]);
+    return `<div class="row"><div class="ic" style="background:${esI?'var(--menta-bg)':c.c+'22'}">${esI?'💰':c.e}</div>
+      <div class="tx"><div class="t1">${r.desc}</div><div class="t2">${esI?'Ingreso fijo':r.cat} · día ${r.dia} de cada mes</div></div>
+      <div class="monto" style="color:${esI?'var(--menta)':'var(--coral)'}">${esI?'+':'−'}${CLP(r.monto)}</div>
+      <button class="del" onclick="borrarFijo('${r.id}')">✕</button></div>`;
+  }).join('')+(totF?`<div class="t2" style="margin-top:9px;text-align:center">Gasto fijo comprometido: <b style="color:var(--coral)">${CLP(totF)}/mes</b></div>`:'');}
+let fijoTipo='gasto',fijoCat='Suscripciones';
+function hojaNuevoFijo(){fijoTipo='gasto';fijoCat='Suscripciones';
+  abrirHoja(`<h3>Nuevo fijo mensual</h3>
+  <div class="campo"><label>Tipo</label><div class="chips">
+    <button class="chip oncat" id="fjG" onclick="selFijoTipo('gasto')">− Gasto fijo</button>
+    <button class="chip" id="fjI" onclick="selFijoTipo('ingreso')">＋ Ingreso fijo</button></div></div>
+  ${inp('fMonto','Monto (CLP)','12990','number','','inputmode="numeric"')}
+  ${inp('fDesc','Descripción','Netflix / Sueldo')}
+  <div class="campo" id="fCatWrap"><label>Categoría</label><div class="chips" id="fChips">${CATS.map(c=>
+    `<button class="chip ${c.n===fijoCat?'oncat':''}" onclick="selFijoCat('${c.n}')">${c.e} ${c.n}</button>`).join('')}</div></div>
+  ${inp('fDia','Día del mes (1 a 28)','5','number','5','min="1" max="28"')}
+  <button class="btn coral" onclick="guardarFijo()">Guardar fijo</button>`);}
+function selFijoTipo(t){fijoTipo=t;
+  document.getElementById('fjG').classList.toggle('oncat',t==='gasto');
+  document.getElementById('fjI').classList.toggle('oncat',t==='ingreso');
+  document.getElementById('fCatWrap').style.display=t==='gasto'?'block':'none';}
+function selFijoCat(n){fijoCat=n;document.querySelectorAll('#fChips .chip').forEach(c=>
+  c.classList.toggle('oncat',c.textContent.includes(n)));}
+function guardarFijo(){
+  const m=+document.getElementById('fMonto').value,de=document.getElementById('fDesc').value.trim();
+  const dia=Math.min(28,Math.max(1,+document.getElementById('fDia').value||1));
+  if(!m||m<=0||!de){alert('Completa monto y descripción.');return;}
+  const a=new Date();
+  S.recurrentes.push({id:uid(),tipo:fijoTipo,monto:m,desc:de,cat:fijoTipo==='gasto'?fijoCat:null,dia,
+    desde:a.getFullYear()+'-'+String(a.getMonth()+1).padStart(2,'0'),aplicados:{}});
+  aplicarRecurrentes();guardar();cerrarHoja();pintar();}
+function borrarFijo(id){if(!confirm('¿Eliminar este fijo? Los movimientos ya registrados no se borran.'))return;
+  S.recurrentes=S.recurrentes.filter(r=>r.id!==id);guardar();pintar();}
+function aplicarRecurrentes(){
+  const ahora=new Date();let cambio=false;
+  const cur=new Date(ahora.getFullYear(),ahora.getMonth(),1);
+  S.recurrentes.forEach(r=>{
+    const[y0,m0]=r.desde.split('-').map(Number);
+    let d=new Date(y0,m0-1,1);
+    while(d<=cur){
+      const ym=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+      const esActual=d.getTime()===cur.getTime();
+      if(!r.aplicados[ym]&&(!esActual||ahora.getDate()>=r.dia)){
+        const fecha=ym+'-'+String(r.dia).padStart(2,'0');
+        if(r.tipo==='ingreso')S.ingresos.push({id:uid(),monto:r.monto,desc:r.desc+' (fijo)',fecha});
+        else S.gastos.push({id:uid(),monto:r.monto,cat:r.cat||'Otros',nota:r.desc+' (fijo)',fecha});
+        r.aplicados[ym]=true;cambio=true;}
+      d.setMonth(d.getMonth()+1);}});
+  if(cambio)guardarSolo();}
+
+/* ══════════ Ingresos ══════════ */
+function hojaNuevoIngreso(){abrirHoja(`<h3>Registrar ingreso</h3>
+  ${inp('iMonto','Monto (CLP)','1500000','number','','inputmode="numeric"')}
+  ${inp('iDesc','Descripción','Sueldo')}
+  ${inp('iFecha','Fecha','','date',hoy())}
+  <button class="btn menta" onclick="guardarIngreso()">Guardar ingreso</button>`);}
+function guardarIngreso(){const m=+document.getElementById('iMonto').value;
+  if(!m||m<=0){alert('Ingresa un monto válido.');return;}
+  S.ingresos.push({id:uid(),monto:m,desc:document.getElementById('iDesc').value.trim()||'Ingreso',
+    fecha:document.getElementById('iFecha').value||hoy()});
+  guardar();cerrarHoja();pintar();}
+function borrarIngreso(id){S.ingresos=S.ingresos.filter(i=>i.id!==id);guardar();pintar();}
+
+/* ══════════ Proyección de metas ══════════ */
+function proyeccion(m){
+  if(!m.aportes.length)return m.fechaLimite?`<div class="t2" style="margin-top:5px;color:var(--dim)">📈 Registra aportes para proyectar tu ritmo</div>`:'';
+  const a=ahorradoDe(m);if(a>=m.objetivo)return'';
+  const fechas=m.aportes.map(x=>x.fecha).sort();
+  const ini=new Date(fechas[0]+'T12:00:00'),ahora=new Date();
+  const mesesTrans=Math.max(1,(ahora-ini)/(30.44*86400000));
+  const ritmo=a/mesesTrans;if(ritmo<=0)return'';
+  const mesesFaltan=(m.objetivo-a)/ritmo;
+  const lleg=new Date(ahora.getTime()+mesesFaltan*30.44*86400000);
+  const txtLleg=MESES[lleg.getMonth()].slice(0,3)+' '+lleg.getFullYear();
+  let comp='';
+  if(m.fechaLimite){
+    const lim=new Date(m.fechaLimite+'T12:00:00');
+    const difM=Math.round((lleg-lim)/(30.44*86400000));
+    comp=difM<=0?` · <b style="color:var(--menta)">✓ vas a tiempo</b>`:` · <b style="color:var(--coral)">⚠️ ${difM} mes${difM===1?'':'es'} tarde</b>`;}
+  return `<div class="t2" style="margin-top:5px">📈 Tu ritmo: ${CLP(Math.round(ritmo))}/mes → llegas en ${txtLleg}${comp}</div>`;}
+
 /* ══════════ Hoja modal ══════════ */
 function abrirHoja(html){document.getElementById('hojaBody').innerHTML=html;
   document.getElementById('velo').classList.add('on');document.getElementById('hoja').classList.add('on');}
@@ -529,8 +763,8 @@ const inp=(id,lab,ph,tipo='text',val='',extra='')=>
   `<div class="campo"><label>${lab}</label><input id="${id}" type="${tipo}" placeholder="${ph}" value="${val}" ${extra}></div>`;
 
 /* — Gasto — */
-let catSel='Comida';
-function hojaNuevoGasto(){catSel='Comida';
+let catSel='Restaurant';
+function hojaNuevoGasto(){catSel='Restaurant';
   abrirHoja(`<h3>Registrar gasto</h3>
     ${inp('gMonto','Monto (CLP)','15000','number','','inputmode="numeric"')}
     <div class="campo"><label>Categoría</label><div class="chips" id="gChips">${CATS.map(c=>
@@ -563,21 +797,25 @@ function hojaNuevaMeta(){abrirHoja(`<h3>Nueva meta de ahorro</h3>
   ${inp('mNom','Nombre','Viaje al sur')}
   ${inp('mEmo','Emoji','✈️','text','🎯')}
   ${inp('mObj','Monto objetivo (CLP)','1000000','number','','inputmode="numeric"')}
+  ${inp('mFecha','Fecha límite (opcional)','','date')}
   <button class="btn oro" onclick="guardarMeta()">Crear meta</button>`);}
 function guardarMeta(){const n=document.getElementById('mNom').value.trim(),o=+document.getElementById('mObj').value;
   if(!n||!o||o<=0){alert('Completa nombre y monto objetivo.');return;}
-  S.metas.push({id:uid(),nombre:n,emoji:document.getElementById('mEmo').value.trim()||'🎯',objetivo:o,aportes:[]});
+  S.metas.push({id:uid(),nombre:n,emoji:document.getElementById('mEmo').value.trim()||'🎯',objetivo:o,
+    fechaLimite:document.getElementById('mFecha').value||null,aportes:[]});
   guardar();cerrarHoja();pintar();}
 function hojaEditarMeta(id){const m=S.metas.find(x=>x.id===id);if(!m)return;
   abrirHoja(`<h3>Editar meta</h3>
   ${inp('mNom','Nombre','',  'text',m.nombre)}
   ${inp('mEmo','Emoji','','text',m.emoji)}
   ${inp('mObj','Monto objetivo (CLP)','','number',m.objetivo,'inputmode="numeric"')}
+  ${inp('mFecha','Fecha límite (opcional)','','date',m.fechaLimite||'')}
   <button class="btn oro" onclick="actualizarMeta('${id}')">Guardar cambios</button>`);}
 function actualizarMeta(id){const m=S.metas.find(x=>x.id===id);if(!m)return;
   const n=document.getElementById('mNom').value.trim(),o=+document.getElementById('mObj').value;
   if(!n||!o||o<=0){alert('Completa nombre y monto objetivo.');return;}
   m.nombre=n;m.emoji=document.getElementById('mEmo').value.trim()||m.emoji;m.objetivo=o;
+  m.fechaLimite=document.getElementById('mFecha').value||null;
   guardar();cerrarHoja();pintar();}
 function hojaAporte(id){const m=S.metas.find(x=>x.id===id);if(!m)return;
   abrirHoja(`<h3>Aporte a "${m.nombre}"</h3>
@@ -618,24 +856,38 @@ function guardarHabito(){const n=document.getElementById('hNom').value.trim();
     tipo:tipoSel,dias:[...diasSel].sort(),registros:{}};
   if(tipoSel==='tiempo')h.metaMin=Math.max(1,+document.getElementById('hMin').value||60);
   S.habitos.push(h);guardar();cerrarHoja();pintar();}
-function hojaTiempo(id){const h=S.habitos.find(x=>x.id===id);if(!h)return;
+function marcarDia(id,fecha){const h=S.habitos.find(x=>x.id===id);if(!h||h.tipo!=='check')return;
+  h.registros[fecha]=!h.registros[fecha];if(!h.registros[fecha])delete h.registros[fecha];guardar();pintar();}
+function hojaTiempo(id,fecha){fecha=fecha||hoy();const h=S.habitos.find(x=>x.id===id);if(!h)return;
+  const lab=fecha===hoy()?'hoy':'el '+fecha;
   abrirHoja(`<h3>${h.emoji} ${h.nombre}</h3>
-  <div class="campo"><label>Minutos de hoy (llevas ${minutosEn(h,hoy())} de ${h.metaMin})</label>
+  <div class="campo"><label>Minutos de ${lab} (llevas ${minutosEn(h,fecha)} de ${h.metaMin})</label>
   <input id="minAdd" type="number" inputmode="numeric" placeholder="30"></div>
   <div class="chips" style="margin-bottom:14px">${[15,30,45,60].map(m=>
     `<button class="chip" onclick="document.getElementById('minAdd').value=${m}">+${m} min</button>`).join('')}</div>
-  <button class="btn menta" onclick="sumarTiempo('${id}')">Sumar tiempo</button>
+  <button class="btn menta" onclick="sumarTiempo('${id}','${fecha}')">Sumar tiempo</button>
   <div style="height:8px"></div>
-  <button class="btn fant" onclick="resetTiempo('${id}')">Reiniciar el día a 0</button>`);}
-function sumarTiempo(id){const h=S.habitos.find(x=>x.id===id);if(!h)return;
+  <button class="btn fant" onclick="resetTiempo('${id}','${fecha}')">Reiniciar ese día a 0</button>`);}
+function sumarTiempo(id,fecha){const h=S.habitos.find(x=>x.id===id);if(!h)return;
   const v=+document.getElementById('minAdd').value;
   if(!v||v<=0){alert('Ingresa los minutos.');return;}
-  const f=hoy();h.registros[f]=minutosEn(h,f)+v;guardar();cerrarHoja();pintar();}
-function resetTiempo(id){const h=S.habitos.find(x=>x.id===id);if(!h)return;
-  delete h.registros[hoy()];guardar();cerrarHoja();pintar();}
+  h.registros[fecha]=minutosEn(h,fecha)+v;guardar();cerrarHoja();pintar();}
+function resetTiempo(id,fecha){const h=S.habitos.find(x=>x.id===id);if(!h)return;
+  delete h.registros[fecha];guardar();cerrarHoja();pintar();}
 
 /* ══════════ Ajustes: respaldo y exportación ══════════ */
 function abrirAjustes(){abrirHoja(`<h3>Ajustes y respaldo</h3>
+  <div style="background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:13px;margin-bottom:14px">
+    <b style="font-family:var(--disp);font-size:14px">📲 Widget e ícono</b>
+    <p style="font-size:12px;color:var(--muted);line-height:1.5;margin:7px 0 10px">
+    Para el widget de Scriptable: pega un token de GitHub (permiso <b>gist</b>). Solo se sincronizan totales — tus notas y detalles nunca salen del teléfono.</p>
+    <div class="campo"><label>Token de GitHub</label>
+    <input id="ghTok" type="password" placeholder="ghp_..." value="${S.config.ghToken||''}"></div>
+    <button class="btn menta chico" onclick="guardarToken()">Guardar y sincronizar</button>
+    <div id="syncEstado" style="font-size:12px;color:var(--muted);margin-top:9px;line-height:1.5">${S.config.gistId?'ID del widget: <code style="font-size:11px;word-break:break-all">'+S.config.gistId+'</code>':''}</div>
+    <div style="height:10px"></div>
+    <button class="btn fant chico" onclick="activarBadge()">🔴 Activar badge de tareas en el ícono</button>
+  </div>
   <p style="font-size:13px;color:var(--muted);line-height:1.5;margin-bottom:14px">
   Tus datos viven solo en este iPhone. Descarga un respaldo de vez en cuando por si cambias de equipo o borras Safari.</p>
   <button class="btn fant" onclick="expJSON()">⬇︎ Descargar respaldo (JSON)</button><div style="height:8px"></div>
@@ -647,23 +899,34 @@ function descargar(nombre,contenido,tipo){
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([contenido],{type:tipo}));
   a.download=nombre;a.click();URL.revokeObjectURL(a.href);}
+function guardarToken(){
+  const t=document.getElementById('ghTok').value.trim();
+  if(!t){alert('Pega el token primero.');return;}
+  S.config.ghToken=t;guardarSolo();
+  document.getElementById('syncEstado').textContent='Sincronizando…';
+  sincronizarWidget(true);}
 function expJSON(){descargar('vidaos_respaldo_'+hoy()+'.json',JSON.stringify(S,null,2),'application/json');}
 function impJSON(ev){const f=ev.target.files[0];if(!f)return;
   const r=new FileReader();
   r.onload=()=>{try{const d=JSON.parse(r.result);
     if(!d.metas||!d.gastos)throw 0;
-    if(confirm('Esto reemplazará tus datos actuales. ¿Continuar?')){S=d;guardar();cerrarHoja();pintar();}
+    if(confirm('Esto reemplazará tus datos actuales. ¿Continuar?')){S=d;
+      S.config=S.config||{};S.config.presupuestos=S.config.presupuestos||{};
+      S.ingresos=S.ingresos||[];S.recurrentes=S.recurrentes||[];
+      guardar();cerrarHoja();pintar();}
   }catch(e){alert('El archivo no es un respaldo válido de VidaOS.');}};
   r.readAsText(f);}
 function expCSV(){
-  const filas=[['fecha','categoria','nota','monto'],
-    ...S.gastos.map(g=>[g.fecha,g.cat,(g.nota||'').replace(/;/g,','),g.monto])];
-  descargar('gastos_vidaos.csv','\uFEFF'+filas.map(f=>f.join(';')).join('\n'),'text/csv');}
+  const filas=[['tipo','fecha','categoria','descripcion','monto'],
+    ...S.gastos.map(g=>['gasto',g.fecha,g.cat,(g.nota||'').replace(/;/g,','),-g.monto]),
+    ...S.ingresos.map(i=>['ingreso',i.fecha,'',(i.desc||'').replace(/;/g,','),i.monto])];
+  descargar('finanzas_vidaos.csv','\uFEFF'+filas.map(f=>f.join(';')).join('\n'),'text/csv');}
 function borrarTodo(){if(confirm('¿Seguro? Se borra TODO: metas, gastos, tareas y hábitos.')&&
   confirm('Última confirmación: esta acción no se puede deshacer.')){S=porDefecto();guardar();cerrarHoja();pintar();}}
 
 /* ══════════ Arranque ══════════ */
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+aplicarRecurrentes();
 pintar();
 </script>
 </body>
