@@ -246,6 +246,10 @@ nav{position:fixed;left:0;right:0;bottom:0;z-index:30;
       <button class="btn coral" onclick="hojaNuevoGasto()">− Gasto</button>
       <button class="btn menta" onclick="hojaNuevoIngreso()">＋ Ingreso</button>
     </div>
+    <div class="sect"><h2>Cuentas</h2></div>
+    <div class="card" id="listaCuentas"></div>
+    <div class="sect"><h2>💳 Tarjeta de crédito</h2><button class="lnk" onclick="hojaEditarCupo()">Editar cupo ›</button></div>
+    <div class="card" id="cardTarjeta"></div>
     <div class="sect"><h2>Presupuesto del mes</h2><button class="lnk" onclick="hojaPresupuestos()">Configurar ›</button></div>
     <div class="card" id="listaPres"></div>
     <div class="sect"><h2>Por categoría</h2></div>
@@ -352,6 +356,11 @@ if(!S.config.categorias){
     ...exPrev.map(c=>({...c,oculta:false}))];
   delete S.config.catsOcultas;delete S.config.catsExtra;
 }
+S.cuentas=S.cuentas||[
+  {id:'mp',nombre:'Mercado Pago',emoji:'💚',saldo:0},
+  {id:'santander',nombre:'Santander',emoji:'🏦',saldo:0}];
+S.pagosTarjeta=S.pagosTarjeta||[];
+if(!S.tarjeta)S.tarjeta={cupoTotal:2000000,utilizado:579114};
 function guardarSolo(){ if(hayStorage){try{localStorage.setItem(CLAVE,JSON.stringify(S));}catch(e){}} }
 function guardar(){ guardarSolo(); planificarSync(); }
 
@@ -416,6 +425,18 @@ function irTab(t){
 
 /* ══════════ Cálculos ══════════ */
 const ahorradoDe=m=>m.aportes.reduce((s,a)=>s+a.monto,0);
+/* Aplica (o revierte) el efecto de un gasto sobre la cuenta de débito o el cupo de la tarjeta */
+function efectoGasto(g,aplicar){
+  if(!g.medioPago)return;const mult=aplicar?1:-1;
+  if(g.medioPago==='credito'){S.tarjeta.utilizado=Math.max(0,S.tarjeta.utilizado+mult*g.monto);}
+  else{const c=S.cuentas.find(x=>x.id===g.medioPago);if(c)c.saldo-=mult*g.monto;}}
+/* Aplica (o revierte) el efecto de un ingreso sobre la cuenta que lo recibe */
+function efectoIngreso(i,aplicar){
+  if(!i.cuenta)return;const mult=aplicar?1:-1;
+  const c=S.cuentas.find(x=>x.id===i.cuenta);if(c)c.saldo+=mult*i.monto;}
+function medioLabel(m){
+  if(m==='credito')return'💳 Tarjeta de crédito';
+  const c=S.cuentas.find(x=>x.id===m);return c?c.emoji+' '+c.nombre:'Sin especificar';}
 const fmtFecha=f=>{const[y,mo,d]=f.split('-');return +d+' '+MESES[+mo-1].slice(0,3)+' '+y;};
 function infoPlazo(m){
   if(!m.fechaLimite)return'';
@@ -562,6 +583,7 @@ function pintar(){
   const ymPrefix=y+'-'+String(mo+1).padStart(2,'0');
   const av=S.metas.flatMap(m=>m.aportes.filter(a=>a.fecha.startsWith(ymPrefix))
     .map(a=>({...a,_meta:m}))).sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  const pv=S.pagosTarjeta.filter(p=>p.fecha.startsWith(ymPrefix)).sort((a,b)=>b.fecha.localeCompare(a.fecha));
   const totV=gv.reduce((s,g)=>s+g.monto,0);
   const totI=iv.reduce((s,i)=>s+i.monto,0);
   const totA=av.reduce((s,a)=>s+a.monto,0);
@@ -578,24 +600,31 @@ function pintar(){
       <div class="sub">no gastado ni ahorrado</div></div>
     <div class="kpi" style="grid-column:1/-1"><div class="lab">Tasa de ahorro</div><div class="val" style="color:${tasa===null?'var(--dim)':tasa>=20?'var(--menta)':tasa>=0?'var(--oro)':'var(--coral)'}">${tasa===null?'—':tasa+'%'}</div>
       <div class="sub">${tasa===null?'registra ingresos para calcularla':'de tu ingreso fue directo a tus metas'}</div></div>`;
+  renderCuentas();
+  renderTarjeta();
   renderPresupuestos(gv);
   donut('donutGastos2',gv);
   evolucion();
   renderFijos();
-  const movs=[...gv.map(g=>({...g,_t:'g'})),...iv.map(x=>({...x,_t:'i'})),...av.map(a=>({...a,_t:'a'}))]
+  const movs=[...gv.map(g=>({...g,_t:'g'})),...iv.map(x=>({...x,_t:'i'})),...av.map(a=>({...a,_t:'a'})),...pv.map(p=>({...p,_t:'p'}))]
     .sort((a,b)=>b.fecha.localeCompare(a.fecha));
   document.getElementById('listaGastos').innerHTML=movs.length?movs.map(m=>{
     if(m._t==='i')return `<div class="row" onclick="hojaEditarIngreso('${m.id}')"><div class="ic" style="background:var(--menta-bg)">💰</div>
-      <div class="tx"><div class="t1">${m.desc}</div><div class="t2">Ingreso · ${m.fecha} · toca para editar</div></div>
+      <div class="tx"><div class="t1">${m.desc}</div><div class="t2">Ingreso · ${medioLabel(m.cuenta)} · ${m.fecha} · toca para editar</div></div>
       <div class="monto" style="color:var(--menta)">+${CLP(m.monto)}</div>
       <button class="del" onclick="event.stopPropagation();borrarIngreso('${m.id}')">✕</button></div>`;
     if(m._t==='a')return `<div class="row" onclick="hojaEditarAporte('${m._meta.id}','${m.id}')"><div class="ic" style="background:var(--oro-bg)">${m._meta.emoji}</div>
       <div class="tx"><div class="t1">Ahorro: ${m._meta.nombre}</div><div class="t2">Aporte a meta · ${m.fecha} · toca para editar</div></div>
       <div class="monto" style="color:var(--oro)">−${CLP(m.monto)}</div>
       <button class="del" onclick="event.stopPropagation();borrarAporte('${m._meta.id}','${m.id}')">✕</button></div>`;
+    if(m._t==='p'){const cu=S.cuentas.find(c=>c.id===m.cuenta);
+      return `<div class="row" onclick="hojaEditarPagoTarjeta('${m.id}')"><div class="ic" style="background:var(--card2)">💳</div>
+      <div class="tx"><div class="t1">Pago tarjeta de crédito</div><div class="t2">Traspaso desde ${cu?cu.nombre:'cuenta'} · ${m.fecha} · toca para editar</div></div>
+      <div class="monto" style="color:var(--muted)">↦ ${CLP(m.monto)}</div>
+      <button class="del" onclick="event.stopPropagation();borrarPagoTarjeta('${m.id}')">✕</button></div>`;}
     const c=catsTodas().find(x=>x.n===m.cat)||CAT_OTROS;
     return `<div class="row" onclick="hojaEditarGasto('${m.id}')"><div class="ic" style="background:${c.c}22">${c.e}</div>
-      <div class="tx"><div class="t1">${m.nota||m.cat}</div><div class="t2">${m.cat} · ${m.fecha} · toca para editar</div></div>
+      <div class="tx"><div class="t1">${m.nota||m.cat}</div><div class="t2">${m.cat} · ${medioLabel(m.medioPago)} · ${m.fecha} · toca para editar</div></div>
       <div class="monto" style="color:var(--coral)">−${CLP(m.monto)}</div>
       <button class="del" onclick="event.stopPropagation();borrarGasto('${m.id}')">✕</button></div>`;
   }).join(''):'<div class="vacio">Sin movimientos este mes.</div>';
@@ -651,7 +680,8 @@ function toggleHabito(id){const h=S.habitos.find(x=>x.id===id);if(!h||h.tipo!=='
   const f=hoy();h.registros[f]=!h.registros[f];if(!h.registros[f])delete h.registros[f];guardar();pintar();}
 function borrarHabito(id){if(!confirm('¿Eliminar este hábito y su historial?'))return;
   S.habitos=S.habitos.filter(h=>h.id!==id);guardar();pintar();}
-function borrarGasto(id){S.gastos=S.gastos.filter(g=>g.id!==id);guardar();pintar();}
+function borrarGasto(id){const g=S.gastos.find(x=>x.id===id);if(g)efectoGasto(g,false);
+  S.gastos=S.gastos.filter(g=>g.id!==id);guardar();pintar();}
 function borrarMeta(id){if(!confirm('¿Eliminar esta meta y sus aportes?'))return;
   S.metas=S.metas.filter(m=>m.id!==id);guardar();pintar();}
 function cambiarMes(d){mesVista=new Date(mesVista.getFullYear(),mesVista.getMonth()+d,1);pintar();}
@@ -720,8 +750,8 @@ function renderFijos(){
       <div class="monto" style="color:${esI?'var(--menta)':'var(--coral)'}">${esI?'+':'−'}${CLP(r.monto)}</div>
       <button class="del" onclick="event.stopPropagation();borrarFijo('${r.id}')">✕</button></div>`;
   }).join('')+(totF?`<div class="t2" style="margin-top:9px;text-align:center">Gasto fijo comprometido: <b style="color:var(--coral)">${CLP(totF)}/mes</b></div>`:'');}
-let fijoTipo='gasto',fijoCat='Suscripciones';
-function hojaNuevoFijo(){fijoTipo='gasto';fijoCat='Suscripciones';
+let fijoTipo='gasto',fijoCat='Suscripciones',fijoMedio='mp';
+function hojaNuevoFijo(){fijoTipo='gasto';fijoCat='Suscripciones';fijoMedio='mp';
   abrirHoja(`<h3>Nuevo fijo mensual</h3>
   <div class="campo"><label>Tipo</label><div class="chips">
     <button class="chip oncat" id="fjG" onclick="selFijoTipo('gasto')">− Gasto fijo</button>
@@ -730,26 +760,35 @@ function hojaNuevoFijo(){fijoTipo='gasto';fijoCat='Suscripciones';
   ${inp('fDesc','Descripción','Netflix / Sueldo')}
   <div class="campo" id="fCatWrap"><label>Categoría</label><div class="chips" id="fChips">${catsActivas().map(c=>
     `<button class="chip ${c.n===fijoCat?'oncat':''}" onclick="selFijoCat('${c.n}')">${c.e} ${c.n}</button>`).join('')}</div></div>
+  <div class="campo" id="fMedioWrap"><label>Medio de pago</label><div class="chips" id="fmChips">${chipsMedio(fijoMedio)}</div></div>
+  <div class="campo" id="fCuentaWrap" style="display:none"><label>¿A qué cuenta llega?</label><div class="chips" id="fcChips">${chipsCuenta(fijoMedio==='credito'?'mp':fijoMedio)}</div></div>
   ${inp('fDia','Día del mes (1 a 28)','5','number','5','min="1" max="28"')}
   <button class="btn coral" onclick="guardarFijo()">Guardar fijo</button>`);}
 function selFijoTipo(t){fijoTipo=t;
   document.getElementById('fjG').classList.toggle('oncat',t==='gasto');
   document.getElementById('fjI').classList.toggle('oncat',t==='ingreso');
-  document.getElementById('fCatWrap').style.display=t==='gasto'?'block':'none';}
+  document.getElementById('fCatWrap').style.display=t==='gasto'?'block':'none';
+  document.getElementById('fMedioWrap').style.display=t==='gasto'?'block':'none';
+  document.getElementById('fCuentaWrap').style.display=t==='ingreso'?'block':'none';
+  if(t==='ingreso'&&fijoMedio==='credito')fijoMedio='mp';}
 function selFijoCat(n){fijoCat=n;document.querySelectorAll('#fChips .chip').forEach(c=>
   c.classList.toggle('oncat',c.textContent.includes(n)));}
+function selFijoMedio(id){fijoMedio=id;
+  const elM=document.getElementById('fmChips');if(elM)elM.innerHTML=chipsMedio(fijoMedio);
+  const elC=document.getElementById('fcChips');if(elC)elC.innerHTML=chipsCuenta(fijoMedio);}
 function guardarFijo(){
   const m=+document.getElementById('fMonto').value,de=document.getElementById('fDesc').value.trim();
   const dia=Math.min(28,Math.max(1,+document.getElementById('fDia').value||1));
   if(!m||m<=0||!de){alert('Completa monto y descripción.');return;}
   const a=new Date();
-  S.recurrentes.push({id:uid(),tipo:fijoTipo,monto:m,desc:de,cat:fijoTipo==='gasto'?fijoCat:null,dia,
+  S.recurrentes.push({id:uid(),tipo:fijoTipo,monto:m,desc:de,cat:fijoTipo==='gasto'?fijoCat:null,
+    medioPago:fijoTipo==='gasto'?fijoMedio:null,cuenta:fijoTipo==='ingreso'?fijoMedio:null,dia,
     desde:a.getFullYear()+'-'+String(a.getMonth()+1).padStart(2,'0'),aplicados:{}});
   aplicarRecurrentes();guardar();cerrarHoja();pintar();}
 function borrarFijo(id){if(!confirm('¿Eliminar este fijo? Los movimientos ya registrados no se borran.'))return;
   S.recurrentes=S.recurrentes.filter(r=>r.id!==id);guardar();pintar();}
 function hojaEditarFijo(id){const r=S.recurrentes.find(x=>x.id===id);if(!r)return;
-  fijoTipo=r.tipo;fijoCat=r.cat||catsActivas()[0].n;
+  fijoTipo=r.tipo;fijoCat=r.cat||catsActivas()[0].n;fijoMedio=(r.tipo==='gasto'?r.medioPago:r.cuenta)||'mp';
   abrirHoja(`<h3>Editar fijo mensual</h3>
   <div class="campo"><label>Tipo</label><div class="chips">
     <button class="chip ${fijoTipo==='gasto'?'oncat':''}" id="fjG" onclick="selFijoTipo('gasto')">− Gasto fijo</button>
@@ -758,6 +797,8 @@ function hojaEditarFijo(id){const r=S.recurrentes.find(x=>x.id===id);if(!r)retur
   ${inp('fDesc','Descripción','','text',r.desc)}
   <div class="campo" id="fCatWrap" style="${fijoTipo==='gasto'?'':'display:none'}"><label>Categoría</label><div class="chips" id="fChips">${catsActivas().map(c=>
     `<button class="chip ${c.n===fijoCat?'oncat':''}" onclick="selFijoCat('${c.n}')">${c.e} ${c.n}</button>`).join('')}</div></div>
+  <div class="campo" id="fMedioWrap" style="${fijoTipo==='gasto'?'':'display:none'}"><label>Medio de pago</label><div class="chips" id="fmChips">${chipsMedio(fijoMedio)}</div></div>
+  <div class="campo" id="fCuentaWrap" style="${fijoTipo==='ingreso'?'':'display:none'}"><label>¿A qué cuenta llega?</label><div class="chips" id="fcChips">${chipsCuenta(fijoMedio==='credito'?'mp':fijoMedio)}</div></div>
   ${inp('fDia','Día del mes (1 a 28)','','number',r.dia,'min="1" max="28"')}
   <button class="btn coral" onclick="actualizarFijo('${id}')">Guardar cambios</button>
   <div style="height:8px"></div>
@@ -766,7 +807,8 @@ function actualizarFijo(id){const r=S.recurrentes.find(x=>x.id===id);if(!r)retur
   const m=+document.getElementById('fMonto').value,de=document.getElementById('fDesc').value.trim();
   const dia=Math.min(28,Math.max(1,+document.getElementById('fDia').value||1));
   if(!m||m<=0||!de){alert('Completa monto y descripción.');return;}
-  r.tipo=fijoTipo;r.monto=m;r.desc=de;r.cat=fijoTipo==='gasto'?fijoCat:null;r.dia=dia;
+  r.tipo=fijoTipo;r.monto=m;r.desc=de;r.cat=fijoTipo==='gasto'?fijoCat:null;
+  r.medioPago=fijoTipo==='gasto'?fijoMedio:null;r.cuenta=fijoTipo==='ingreso'?fijoMedio:null;r.dia=dia;
   guardar();cerrarHoja();pintar();}
 function aplicarRecurrentes(){
   const ahora=new Date();let cambio=false;
@@ -779,8 +821,10 @@ function aplicarRecurrentes(){
       const esActual=d.getTime()===cur.getTime();
       if(!r.aplicados[ym]&&(!esActual||ahora.getDate()>=r.dia)){
         const fecha=ym+'-'+String(r.dia).padStart(2,'0');
-        if(r.tipo==='ingreso')S.ingresos.push({id:uid(),monto:r.monto,desc:r.desc+' (fijo)',fecha});
-        else S.gastos.push({id:uid(),monto:r.monto,cat:r.cat||'Otros',nota:r.desc+' (fijo)',fecha});
+        if(r.tipo==='ingreso'){const i={id:uid(),monto:r.monto,desc:r.desc+' (fijo)',cuenta:r.cuenta||null,fecha};
+          S.ingresos.push(i);efectoIngreso(i,true);}
+        else{const g={id:uid(),monto:r.monto,cat:r.cat||'Otros',medioPago:r.medioPago||null,nota:r.desc+' (fijo)',fecha};
+          S.gastos.push(g);efectoGasto(g,true);}
         r.aplicados[ym]=true;cambio=true;}
       d.setMonth(d.getMonth()+1);}});
   if(cambio)guardarSolo();}
@@ -842,21 +886,29 @@ function borrarCategoria(i){const c=S.config.categorias[i];if(!c)return;
   S.config.categorias.splice(i,1);guardar();hojaCategorias();}
 
 /* ══════════ Ingresos ══════════ */
-function hojaNuevoIngreso(){abrirHoja(`<h3>Registrar ingreso</h3>
+let cuentaSel='mp';
+function chipsCuenta(sel){return S.cuentas.map(c=>
+  `<button class="chip ${c.id===sel?'oncat':''}" onclick="selCuenta('${c.id}')">${c.emoji} ${c.nombre}</button>`).join('');}
+function selCuenta(id){cuentaSel=id;document.getElementById('cChips').innerHTML=chipsCuenta(cuentaSel);}
+function hojaNuevoIngreso(){cuentaSel='mp';abrirHoja(`<h3>Registrar ingreso</h3>
   ${inp('iMonto','Monto (CLP)','1500000','number','','inputmode="numeric"')}
   ${inp('iDesc','Descripción','Sueldo')}
+  <div class="campo"><label>¿A qué cuenta llega?</label><div class="chips" id="cChips">${chipsCuenta(cuentaSel)}</div></div>
   ${inp('iFecha','Fecha','','date',hoy())}
   <button class="btn menta" onclick="guardarIngreso()">Guardar ingreso</button>`);}
 function guardarIngreso(){const m=+document.getElementById('iMonto').value;
   if(!m||m<=0){alert('Ingresa un monto válido.');return;}
-  S.ingresos.push({id:uid(),monto:m,desc:document.getElementById('iDesc').value.trim()||'Ingreso',
-    fecha:document.getElementById('iFecha').value||hoy()});
+  const i={id:uid(),monto:m,desc:document.getElementById('iDesc').value.trim()||'Ingreso',cuenta:cuentaSel,
+    fecha:document.getElementById('iFecha').value||hoy()};
+  S.ingresos.push(i);efectoIngreso(i,true);
   guardar();cerrarHoja();pintar();}
-function borrarIngreso(id){S.ingresos=S.ingresos.filter(i=>i.id!==id);guardar();pintar();}
-function hojaEditarIngreso(id){const i=S.ingresos.find(x=>x.id===id);if(!i)return;
+function borrarIngreso(id){const i=S.ingresos.find(x=>x.id===id);if(i)efectoIngreso(i,false);
+  S.ingresos=S.ingresos.filter(i=>i.id!==id);guardar();pintar();}
+function hojaEditarIngreso(id){const i=S.ingresos.find(x=>x.id===id);if(!i)return;cuentaSel=i.cuenta||'mp';
   abrirHoja(`<h3>Editar ingreso</h3>
   ${inp('iMonto','Monto (CLP)','','number',i.monto,'inputmode="numeric"')}
   ${inp('iDesc','Descripción','','text',i.desc)}
+  <div class="campo"><label>¿A qué cuenta llega?</label><div class="chips" id="cChips">${chipsCuenta(cuentaSel)}</div></div>
   ${inp('iFecha','Fecha','','date',i.fecha)}
   <button class="btn menta" onclick="actualizarIngreso('${id}')">Guardar cambios</button>
   <div style="height:8px"></div>
@@ -864,9 +916,90 @@ function hojaEditarIngreso(id){const i=S.ingresos.find(x=>x.id===id);if(!i)retur
 function actualizarIngreso(id){const i=S.ingresos.find(x=>x.id===id);if(!i)return;
   const m=+document.getElementById('iMonto').value;
   if(!m||m<=0){alert('Ingresa un monto válido.');return;}
-  i.monto=m;i.desc=document.getElementById('iDesc').value.trim()||'Ingreso';
+  efectoIngreso(i,false);
+  i.monto=m;i.desc=document.getElementById('iDesc').value.trim()||'Ingreso';i.cuenta=cuentaSel;
   i.fecha=document.getElementById('iFecha').value||i.fecha;
+  efectoIngreso(i,true);
   guardar();cerrarHoja();pintar();}
+
+/* ══════════ Tarjeta de crédito y cuentas ══════════ */
+function hojaPagarTarjeta(){
+  const deuda=S.tarjeta.utilizado;
+  abrirHoja(`<h3>Pagar tarjeta de crédito</h3>
+  <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Debes ${CLP(deuda)} de ${CLP(S.tarjeta.cupoTotal)}. Este pago no se cuenta de nuevo como gasto — solo mueve la plata de tu cuenta y libera cupo.</p>
+  ${inp('ptMonto','Monto a pagar (CLP)','','number',deuda||'','inputmode="numeric"')}
+  <div class="campo"><label>¿Desde qué cuenta?</label><div class="chips" id="ptChips">${S.cuentas.map(c=>
+    `<button class="chip ${c.id==='mp'?'oncat':''}" data-c="${c.id}" onclick="document.querySelectorAll('#ptChips .chip').forEach(x=>x.classList.toggle('oncat',x===this))">${c.emoji} ${c.nombre} (${CLP(c.saldo)})</button>`).join('')}</div></div>
+  ${inp('ptFecha','Fecha','','date',hoy())}
+  <button class="btn coral" onclick="registrarPagoTarjeta()">Registrar pago</button>`);}
+function registrarPagoTarjeta(){
+  const m=+document.getElementById('ptMonto').value;
+  if(!m||m<=0){alert('Ingresa un monto válido.');return;}
+  const chip=document.querySelector('#ptChips .chip.oncat');
+  const cuentaId=chip?chip.dataset.c:'mp';
+  const cuenta=S.cuentas.find(c=>c.id===cuentaId);
+  const p={id:uid(),monto:m,cuenta:cuentaId,fecha:document.getElementById('ptFecha').value||hoy()};
+  S.pagosTarjeta.push(p);
+  if(cuenta)cuenta.saldo-=m;
+  S.tarjeta.utilizado=Math.max(0,S.tarjeta.utilizado-m);
+  guardar();cerrarHoja();pintar();}
+function hojaEditarPagoTarjeta(id){const p=S.pagosTarjeta.find(x=>x.id===id);if(!p)return;
+  abrirHoja(`<h3>Editar pago de tarjeta</h3>
+  ${inp('ptMonto','Monto (CLP)','','number',p.monto,'inputmode="numeric"')}
+  <div class="campo"><label>¿Desde qué cuenta?</label><div class="chips" id="ptChips">${S.cuentas.map(c=>
+    `<button class="chip ${c.id===p.cuenta?'oncat':''}" data-c="${c.id}" onclick="document.querySelectorAll('#ptChips .chip').forEach(x=>x.classList.toggle('oncat',x===this))">${c.emoji} ${c.nombre}</button>`).join('')}</div></div>
+  ${inp('ptFecha','Fecha','','date',p.fecha)}
+  <button class="btn coral" onclick="actualizarPagoTarjeta('${id}')">Guardar cambios</button>
+  <div style="height:8px"></div>
+  <button class="btn fant" onclick="borrarPagoTarjeta('${id}');cerrarHoja()">🗑 Eliminar pago</button>`);}
+function actualizarPagoTarjeta(id){const p=S.pagosTarjeta.find(x=>x.id===id);if(!p)return;
+  const m=+document.getElementById('ptMonto').value;
+  if(!m||m<=0){alert('Ingresa un monto válido.');return;}
+  const cViejo=S.cuentas.find(c=>c.id===p.cuenta);if(cViejo)cViejo.saldo+=p.monto;
+  S.tarjeta.utilizado+=p.monto;
+  const chip=document.querySelector('#ptChips .chip.oncat');
+  p.cuenta=chip?chip.dataset.c:p.cuenta;p.monto=m;p.fecha=document.getElementById('ptFecha').value||p.fecha;
+  const cNuevo=S.cuentas.find(c=>c.id===p.cuenta);if(cNuevo)cNuevo.saldo-=m;
+  S.tarjeta.utilizado=Math.max(0,S.tarjeta.utilizado-m);
+  guardar();cerrarHoja();pintar();}
+function borrarPagoTarjeta(id){const p=S.pagosTarjeta.find(x=>x.id===id);if(!p)return;
+  const c=S.cuentas.find(x=>x.id===p.cuenta);if(c)c.saldo+=p.monto;
+  S.tarjeta.utilizado+=p.monto;
+  S.pagosTarjeta=S.pagosTarjeta.filter(x=>x.id!==id);guardar();pintar();}
+function hojaEditarCupo(){
+  abrirHoja(`<h3>Cupo de la tarjeta</h3>
+  ${inp('tcTotal','Cupo total (CLP)','','number',S.tarjeta.cupoTotal,'inputmode="numeric"')}
+  ${inp('tcUtil','Utilizado actualmente (CLP)','','number',S.tarjeta.utilizado,'inputmode="numeric"')}
+  <p style="font-size:11.5px;color:var(--muted);margin:8px 0 12px">Ajusta "utilizado" solo si necesitas cuadrar el cupo con lo que muestra tu banco.</p>
+  <button class="btn coral" onclick="actualizarCupo()">Guardar</button>`);}
+function actualizarCupo(){
+  const t=+document.getElementById('tcTotal').value,u=+document.getElementById('tcUtil').value;
+  if(!t||t<=0){alert('Ingresa un cupo total válido.');return;}
+  S.tarjeta.cupoTotal=t;S.tarjeta.utilizado=Math.max(0,u||0);
+  guardar();cerrarHoja();pintar();}
+function hojaAjustarCuenta(id){const c=S.cuentas.find(x=>x.id===id);if(!c)return;
+  abrirHoja(`<h3>Ajustar saldo · ${c.emoji} ${c.nombre}</h3>
+  <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Usa esto para corregir el saldo y que calce con tu cuenta real (por ejemplo, la primera vez que la configuras).</p>
+  ${inp('caSaldo','Saldo actual (CLP)','','number',c.saldo,'inputmode="numeric"')}
+  <button class="btn menta" onclick="actualizarSaldoCuenta('${id}')">Guardar saldo</button>`);}
+function actualizarSaldoCuenta(id){const c=S.cuentas.find(x=>x.id===id);if(!c)return;
+  const v=document.getElementById('caSaldo').value;
+  if(v===''){alert('Ingresa un monto.');return;}
+  c.saldo=+v;guardar();cerrarHoja();pintar();}
+function renderCuentas(){
+  const el=document.getElementById('listaCuentas');if(!el)return;
+  el.innerHTML=S.cuentas.map(c=>`<div class="row" onclick="hojaAjustarCuenta('${c.id}')">
+    <div class="ic" style="background:var(--card2)">${c.emoji}</div>
+    <div class="tx"><div class="t1">${c.nombre}</div><div class="t2">toca para ajustar saldo</div></div>
+    <div class="monto" style="color:${c.saldo<0?'var(--coral)':'var(--text)'}">${CLP(c.saldo)}</div></div>`).join('');}
+function renderTarjeta(){
+  const el=document.getElementById('cardTarjeta');if(!el)return;
+  const {cupoTotal,utilizado}=S.tarjeta,disp=cupoTotal-utilizado;
+  const pct=cupoTotal?Math.min(100,utilizado/cupoTotal*100):0;
+  const col=pct>=90?'var(--coral)':pct>=70?'var(--oro)':'var(--menta)';
+  el.innerHTML=`<div class="pbar"><div class="pfill" style="width:${pct}%;background:${col}"></div></div>
+    <div class="t2" style="margin-top:7px">Disponible <b style="color:${col}">${CLP(disp)}</b> de ${CLP(cupoTotal)} · debes ${CLP(utilizado)}</div>
+    <div class="fila-btn"><button class="btn coral chico" onclick="hojaPagarTarjeta()">Pagar tarjeta</button></div>`;}
 
 /* ══════════ Proyección de metas ══════════ */
 function proyeccion(m){
@@ -919,11 +1052,16 @@ function cerrarHoja(){const hj=document.getElementById('hoja');
 const inp=(id,lab,ph,tipo='text',val='',extra='')=>
   `<div class="campo"><label>${lab}</label><input id="${id}" type="${tipo}" placeholder="${ph}" value="${val}" ${extra}></div>`;
 
+function chipsMedio(sel){return catsMedio().map(m=>
+  `<button class="chip ${m.id===sel?'oncat':''}" onclick="selMedio('${m.id}')">${m.emoji} ${m.nombre}</button>`).join('');}
+function catsMedio(){return[...S.cuentas,{id:'credito',nombre:'Tarjeta de crédito',emoji:'💳'}];}
+
 /* — Gasto — */
-let catSel='Restaurant';
-function hojaNuevoGasto(){catSel='Restaurant';
+let catSel='Restaurant',medioSel='mp';
+function hojaNuevoGasto(){catSel='Restaurant';medioSel='mp';
   abrirHoja(`<h3>Registrar gasto</h3>
     ${inp('gMonto','Monto (CLP)','15000','number','','inputmode="numeric"')}
+    <div class="campo"><label>Medio de pago</label><div class="chips" id="mChips">${chipsMedio(medioSel)}</div></div>
     <div class="campo"><label>Categoría <button class="lnk" style="font-size:11.5px" onclick="hojaCategorias()">gestionar ›</button></label>
     <div class="chips" id="gChips">${catsActivas().map(c=>
       `<button class="chip ${c.n===catSel?'oncat':''}" onclick="selCat('${c.n}')">${c.e} ${c.n}</button>`).join('')}</div></div>
@@ -932,15 +1070,18 @@ function hojaNuevoGasto(){catSel='Restaurant';
     <button class="btn coral" onclick="guardarGasto()">Guardar gasto</button>`);}
 function selCat(n){catSel=n;document.querySelectorAll('#gChips .chip').forEach(c=>
   c.classList.toggle('oncat',c.textContent.includes(n)));}
+function selMedio(id){medioSel=id;document.getElementById('mChips').innerHTML=chipsMedio(medioSel);}
 function guardarGasto(){
   const m=+document.getElementById('gMonto').value;
   if(!m||m<=0){alert('Ingresa un monto válido.');return;}
-  S.gastos.push({id:uid(),monto:m,cat:catSel,nota:document.getElementById('gNota').value.trim(),
-    fecha:document.getElementById('gFecha').value||hoy()});
+  const g={id:uid(),monto:m,cat:catSel,medioPago:medioSel,nota:document.getElementById('gNota').value.trim(),
+    fecha:document.getElementById('gFecha').value||hoy()};
+  S.gastos.push(g);efectoGasto(g,true);
   guardar();cerrarHoja();pintar();}
-function hojaEditarGasto(id){const g=S.gastos.find(x=>x.id===id);if(!g)return;catSel=g.cat;
+function hojaEditarGasto(id){const g=S.gastos.find(x=>x.id===id);if(!g)return;catSel=g.cat;medioSel=g.medioPago||'mp';
   abrirHoja(`<h3>Editar gasto</h3>
     ${inp('gMonto','Monto (CLP)','','number',g.monto,'inputmode="numeric"')}
+    <div class="campo"><label>Medio de pago</label><div class="chips" id="mChips">${chipsMedio(medioSel)}</div></div>
     <div class="campo"><label>Categoría <button class="lnk" style="font-size:11.5px" onclick="hojaCategorias()">gestionar ›</button></label>
     <div class="chips" id="gChips">${catsActivas().map(c=>
       `<button class="chip ${c.n===catSel?'oncat':''}" onclick="selCat('${c.n}')">${c.e} ${c.n}</button>`).join('')}</div></div>
@@ -952,8 +1093,10 @@ function hojaEditarGasto(id){const g=S.gastos.find(x=>x.id===id);if(!g)return;ca
 function actualizarGasto(id){const g=S.gastos.find(x=>x.id===id);if(!g)return;
   const m=+document.getElementById('gMonto').value;
   if(!m||m<=0){alert('Ingresa un monto válido.');return;}
-  g.monto=m;g.cat=catSel;g.nota=document.getElementById('gNota').value.trim();
+  efectoGasto(g,false);
+  g.monto=m;g.cat=catSel;g.medioPago=medioSel;g.nota=document.getElementById('gNota').value.trim();
   g.fecha=document.getElementById('gFecha').value||g.fecha;
+  efectoGasto(g,true);
   guardar();cerrarHoja();pintar();}
 
 /* — Tarea — */
@@ -1120,13 +1263,19 @@ if(!S.config.categorias){
     ...exPrev.map(c=>({...c,oculta:false}))];
   delete S.config.catsOcultas;delete S.config.catsExtra;
 }
+S.cuentas=S.cuentas||[
+  {id:'mp',nombre:'Mercado Pago',emoji:'💚',saldo:0},
+  {id:'santander',nombre:'Santander',emoji:'🏦',saldo:0}];
+S.pagosTarjeta=S.pagosTarjeta||[];
+if(!S.tarjeta)S.tarjeta={cupoTotal:2000000,utilizado:579114};
       guardar();cerrarHoja();pintar();}
   }catch(e){alert('El archivo no es un respaldo válido de VidaOS.');}};
   r.readAsText(f);}
 function expCSV(){
-  const filas=[['tipo','fecha','categoria','descripcion','monto'],
-    ...S.gastos.map(g=>['gasto',g.fecha,g.cat,(g.nota||'').replace(/;/g,','),-g.monto]),
-    ...S.ingresos.map(i=>['ingreso',i.fecha,'',(i.desc||'').replace(/;/g,','),i.monto])];
+  const filas=[['tipo','fecha','categoria','descripcion','monto','medio'],
+    ...S.gastos.map(g=>['gasto',g.fecha,g.cat,(g.nota||'').replace(/;/g,','),-g.monto,medioLabel(g.medioPago).replace(/;/g,',')]),
+    ...S.ingresos.map(i=>['ingreso',i.fecha,'',(i.desc||'').replace(/;/g,','),i.monto,medioLabel(i.cuenta).replace(/;/g,',')]),
+    ...S.pagosTarjeta.map(p=>['pago_tarjeta',p.fecha,'','Pago tarjeta de crédito',-p.monto,medioLabel(p.cuenta).replace(/;/g,',')])];
   descargar('finanzas_vidaos.csv','\uFEFF'+filas.map(f=>f.join(';')).join('\n'),'text/csv');}
 function borrarTodo(){if(confirm('¿Seguro? Se borra TODO: metas, gastos, tareas y hábitos.')&&
   confirm('Última confirmación: esta acción no se puede deshacer.')){S=porDefecto();guardar();cerrarHoja();pintar();}}
