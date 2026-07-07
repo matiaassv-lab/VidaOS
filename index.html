@@ -61,15 +61,15 @@ h1.brand span{color:var(--oro)}
 
 /* ── Nivel del día (firma) ── */
 .xp{background:linear-gradient(135deg,#1B222C 0%,#171C23 100%);border:1px solid var(--line);
-  border-radius:18px;padding:16px;margin-top:12px;position:relative;overflow:hidden}
-.xp .tit{display:flex;justify-content:space-between;align-items:baseline}
-.xp .tit b{font-family:var(--disp);font-size:15px}
-.xp .pct{font-family:var(--mono);font-size:22px;font-weight:700;color:var(--menta)}
+  border-radius:18px;padding:16px;margin-top:12px;overflow:hidden}
+.xp .tit{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.xp .tit b{font-family:var(--disp);font-size:15px;display:block}
+.xp .rango{font-size:11px;color:var(--dim);margin-top:3px}
+.xp .pct{font-family:var(--mono);font-size:22px;font-weight:700;color:var(--menta);flex:none;white-space:nowrap}
 .xpbar{height:10px;background:#0C0F13;border-radius:99px;margin-top:11px;overflow:hidden}
 .xpfill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--menta),#8FE6C6);
   box-shadow:0 0 14px rgba(91,214,169,.45);transition:width .5s cubic-bezier(.2,.8,.2,1)}
 .xp .det{font-size:12px;color:var(--muted);margin-top:9px}
-.xp .rango{position:absolute;top:14px;right:16px;font-size:11px;color:var(--dim)}
 
 /* ── Barras de progreso genéricas ── */
 .pbar{height:8px;background:#0C0F13;border-radius:99px;overflow:hidden;margin-top:9px}
@@ -208,8 +208,10 @@ nav{position:fixed;left:0;right:0;bottom:0;z-index:30;
   <!-- ════ INICIO ════ -->
   <section class="view on" id="v-inicio">
     <div class="xp">
-      <div class="rango" id="xpRango"></div>
-      <div class="tit"><b>Nivel del día</b><span class="pct" id="xpPct">0%</span></div>
+      <div class="tit">
+        <div><b>Nivel del día</b><div class="rango" id="xpRango"></div></div>
+        <span class="pct" id="xpPct">0%</span>
+      </div>
       <div class="xpbar"><div class="xpfill" id="xpFill" style="width:0%"></div></div>
       <div class="det" id="xpDet"></div>
     </div>
@@ -300,7 +302,7 @@ const hoy=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()
 const CLP=n=>'$'+Math.round(n||0).toLocaleString('es-CL');
 const DIAS=['D','L','M','X','J','V','S'];
 const MESES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
-const CATS_BASE=[
+const CATS_SEMILLA=[
   {n:'Restaurant',e:'🍽️',c:'#FF7A6B'},{n:'Supermercado',e:'🛒',c:'#E8B84B'},
   {n:'Transporte',e:'🚌',c:'#6BB6FF'},{n:'Gaming',e:'🎮',c:'#5BD6A9'},
   {n:'Salidas',e:'🍻',c:'#FF9DC6'},{n:'Salud',e:'💊',c:'#7FE0E8'},
@@ -309,14 +311,18 @@ const CATS_BASE=[
   {n:'Tarjeta de crédito',e:'💳',c:'#8FA6FF'}];
 const CAT_OTROS={n:'Otros',e:'📦',c:'#98A2AE'};
 const PALETA_EXTRA=['#FF7A6B','#E8B84B','#6BB6FF','#5BD6A9','#FF9DC6','#7FE0E8','#A3D977','#9D8CFF','#FFB86B','#C7D66B','#8FA6FF','#F2A65A','#6BD6D6','#D68FE0'];
-/* Categorías visibles para elegir: base no ocultas + personalizadas, Otros siempre al final */
-function catsActivas(){
-  const oc=S.config.catsOcultas||[],ex=S.config.catsExtra||[];
-  return[...CATS_BASE.filter(c=>!oc.includes(c.n)),...ex,CAT_OTROS];}
-/* Todas, incluidas ocultas: para poder mostrar el ícono correcto de gastos ya registrados */
-function catsTodas(){
-  const ex=S.config.catsExtra||[];
-  return[...CATS_BASE,...ex,CAT_OTROS];}
+/* Categorías visibles para elegir: todas las no ocultas, Otros siempre al final */
+function catsActivas(){return[...S.config.categorias.filter(c=>!c.oculta),CAT_OTROS];}
+/* Todas, incluidas ocultas: para mostrar el ícono correcto de gastos ya registrados aunque la categoría se haya ocultado */
+function catsTodas(){return[...S.config.categorias,CAT_OTROS];}
+/* Migra el nombre de una categoría en todos los registros que la usan (al renombrarla) */
+function migrarCategoria(viejoN,nuevoN){
+  if(viejoN===nuevoN)return;
+  S.gastos.forEach(g=>{if(g.cat===viejoN)g.cat=nuevoN;});
+  S.recurrentes.forEach(r=>{if(r.cat===viejoN)r.cat=nuevoN;});
+  if(S.config.presupuestos&&S.config.presupuestos[viejoN]!=null){
+    S.config.presupuestos[nuevoN]=S.config.presupuestos[viejoN];
+    delete S.config.presupuestos[viejoN];}}
 
 function porDefecto(){return{
   metas:[
@@ -339,7 +345,13 @@ try{
 S.config=S.config||{};S.config.presupuestos=S.config.presupuestos||{};
 S.ingresos=S.ingresos||[];S.recurrentes=S.recurrentes||[];
 S.metas.forEach(m=>(m.aportes||[]).forEach(a=>{if(!a.id)a.id=uid();}));
-S.config.catsExtra=S.config.catsExtra||[];S.config.catsOcultas=S.config.catsOcultas||[];
+if(!S.config.categorias){
+  // Primera vez: sembrar desde CATS_SEMILLA, respetando ocultas/creadas de una versión anterior si existían
+  const ocPrev=S.config.catsOcultas||[],exPrev=S.config.catsExtra||[];
+  S.config.categorias=[...CATS_SEMILLA.map(c=>({...c,oculta:ocPrev.includes(c.n)})),
+    ...exPrev.map(c=>({...c,oculta:false}))];
+  delete S.config.catsOcultas;delete S.config.catsExtra;
+}
 function guardarSolo(){ if(hayStorage){try{localStorage.setItem(CLAVE,JSON.stringify(S));}catch(e){}} }
 function guardar(){ guardarSolo(); planificarSync(); }
 
@@ -547,30 +559,40 @@ function pintar(){
   document.getElementById('mesLabel').textContent=MESES[mo]+' '+y;
   const gv=gastosDeMes(y,mo).sort((a,b)=>b.fecha.localeCompare(a.fecha));
   const iv=ingresosDeMes(y,mo).sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  const ymPrefix=y+'-'+String(mo+1).padStart(2,'0');
+  const av=S.metas.flatMap(m=>m.aportes.filter(a=>a.fecha.startsWith(ymPrefix))
+    .map(a=>({...a,_meta:m}))).sort((a,b)=>b.fecha.localeCompare(a.fecha));
   const totV=gv.reduce((s,g)=>s+g.monto,0);
   const totI=iv.reduce((s,i)=>s+i.monto,0);
-  const balance=totI-totV;
-  const tasa=totI>0?Math.round(balance/totI*100):null;
+  const totA=av.reduce((s,a)=>s+a.monto,0);
+  const disponible=totI-totV-totA;
+  const tasa=totI>0?Math.round(totA/totI*100):null;
   document.getElementById('kpisGastos').innerHTML=`
     <div class="kpi menta"><div class="lab">Ingresos</div><div class="val">${CLP(totI)}</div>
       <div class="sub">${iv.length} registro${iv.length===1?'':'s'}</div></div>
     <div class="kpi coral"><div class="lab">Gastos</div><div class="val">${CLP(totV)}</div>
       <div class="sub">${gv.length} movimiento${gv.length===1?'':'s'}</div></div>
-    <div class="kpi"><div class="lab">Balance</div><div class="val" style="color:${balance>=0?'var(--menta)':'var(--coral)'}">${balance<0?'−':''}${CLP(Math.abs(balance))}</div>
-      <div class="sub">${balance>=0?'mes positivo ✓':'mes en rojo'}</div></div>
-    <div class="kpi"><div class="lab">Tasa de ahorro</div><div class="val" style="color:${tasa===null?'var(--dim)':tasa>=20?'var(--menta)':tasa>=0?'var(--oro)':'var(--coral)'}">${tasa===null?'—':tasa+'%'}</div>
-      <div class="sub">${tasa===null?'registra ingresos':'del ingreso queda libre'}</div></div>`;
+    <div class="kpi oro"><div class="lab">Ahorrado</div><div class="val">${CLP(totA)}</div>
+      <div class="sub">${av.length} aporte${av.length===1?'':'s'} a metas</div></div>
+    <div class="kpi"><div class="lab">Disponible</div><div class="val" style="color:${disponible>=0?'var(--menta)':'var(--coral)'}">${disponible<0?'−':''}${CLP(Math.abs(disponible))}</div>
+      <div class="sub">no gastado ni ahorrado</div></div>
+    <div class="kpi" style="grid-column:1/-1"><div class="lab">Tasa de ahorro</div><div class="val" style="color:${tasa===null?'var(--dim)':tasa>=20?'var(--menta)':tasa>=0?'var(--oro)':'var(--coral)'}">${tasa===null?'—':tasa+'%'}</div>
+      <div class="sub">${tasa===null?'registra ingresos para calcularla':'de tu ingreso fue directo a tus metas'}</div></div>`;
   renderPresupuestos(gv);
   donut('donutGastos2',gv);
   evolucion();
   renderFijos();
-  const movs=[...gv.map(g=>({...g,_t:'g'})),...iv.map(x=>({...x,_t:'i'}))]
+  const movs=[...gv.map(g=>({...g,_t:'g'})),...iv.map(x=>({...x,_t:'i'})),...av.map(a=>({...a,_t:'a'}))]
     .sort((a,b)=>b.fecha.localeCompare(a.fecha));
   document.getElementById('listaGastos').innerHTML=movs.length?movs.map(m=>{
     if(m._t==='i')return `<div class="row" onclick="hojaEditarIngreso('${m.id}')"><div class="ic" style="background:var(--menta-bg)">💰</div>
       <div class="tx"><div class="t1">${m.desc}</div><div class="t2">Ingreso · ${m.fecha} · toca para editar</div></div>
       <div class="monto" style="color:var(--menta)">+${CLP(m.monto)}</div>
       <button class="del" onclick="event.stopPropagation();borrarIngreso('${m.id}')">✕</button></div>`;
+    if(m._t==='a')return `<div class="row" onclick="hojaEditarAporte('${m._meta.id}','${m.id}')"><div class="ic" style="background:var(--oro-bg)">${m._meta.emoji}</div>
+      <div class="tx"><div class="t1">Ahorro: ${m._meta.nombre}</div><div class="t2">Aporte a meta · ${m.fecha} · toca para editar</div></div>
+      <div class="monto" style="color:var(--oro)">−${CLP(m.monto)}</div>
+      <button class="del" onclick="event.stopPropagation();borrarAporte('${m._meta.id}','${m.id}')">✕</button></div>`;
     const c=catsTodas().find(x=>x.n===m.cat)||CAT_OTROS;
     return `<div class="row" onclick="hojaEditarGasto('${m.id}')"><div class="ic" style="background:${c.c}22">${c.e}</div>
       <div class="tx"><div class="t1">${m.nota||m.cat}</div><div class="t2">${m.cat} · ${m.fecha} · toca para editar</div></div>
@@ -693,10 +715,10 @@ function renderFijos(){
   el.innerHTML=S.recurrentes.map(r=>{
     const esI=r.tipo==='ingreso';
     const c=esI?null:(catsTodas().find(x=>x.n===r.cat)||CAT_OTROS);
-    return `<div class="row"><div class="ic" style="background:${esI?'var(--menta-bg)':c.c+'22'}">${esI?'💰':c.e}</div>
-      <div class="tx"><div class="t1">${r.desc}</div><div class="t2">${esI?'Ingreso fijo':r.cat} · día ${r.dia} de cada mes</div></div>
+    return `<div class="row" onclick="hojaEditarFijo('${r.id}')"><div class="ic" style="background:${esI?'var(--menta-bg)':c.c+'22'}">${esI?'💰':c.e}</div>
+      <div class="tx"><div class="t1">${r.desc}</div><div class="t2">${esI?'Ingreso fijo':r.cat} · día ${r.dia} · toca para editar</div></div>
       <div class="monto" style="color:${esI?'var(--menta)':'var(--coral)'}">${esI?'+':'−'}${CLP(r.monto)}</div>
-      <button class="del" onclick="borrarFijo('${r.id}')">✕</button></div>`;
+      <button class="del" onclick="event.stopPropagation();borrarFijo('${r.id}')">✕</button></div>`;
   }).join('')+(totF?`<div class="t2" style="margin-top:9px;text-align:center">Gasto fijo comprometido: <b style="color:var(--coral)">${CLP(totF)}/mes</b></div>`:'');}
 let fijoTipo='gasto',fijoCat='Suscripciones';
 function hojaNuevoFijo(){fijoTipo='gasto';fijoCat='Suscripciones';
@@ -726,6 +748,26 @@ function guardarFijo(){
   aplicarRecurrentes();guardar();cerrarHoja();pintar();}
 function borrarFijo(id){if(!confirm('¿Eliminar este fijo? Los movimientos ya registrados no se borran.'))return;
   S.recurrentes=S.recurrentes.filter(r=>r.id!==id);guardar();pintar();}
+function hojaEditarFijo(id){const r=S.recurrentes.find(x=>x.id===id);if(!r)return;
+  fijoTipo=r.tipo;fijoCat=r.cat||catsActivas()[0].n;
+  abrirHoja(`<h3>Editar fijo mensual</h3>
+  <div class="campo"><label>Tipo</label><div class="chips">
+    <button class="chip ${fijoTipo==='gasto'?'oncat':''}" id="fjG" onclick="selFijoTipo('gasto')">− Gasto fijo</button>
+    <button class="chip ${fijoTipo==='ingreso'?'oncat':''}" id="fjI" onclick="selFijoTipo('ingreso')">＋ Ingreso fijo</button></div></div>
+  ${inp('fMonto','Monto (CLP)','','number',r.monto,'inputmode="numeric"')}
+  ${inp('fDesc','Descripción','','text',r.desc)}
+  <div class="campo" id="fCatWrap" style="${fijoTipo==='gasto'?'':'display:none'}"><label>Categoría</label><div class="chips" id="fChips">${catsActivas().map(c=>
+    `<button class="chip ${c.n===fijoCat?'oncat':''}" onclick="selFijoCat('${c.n}')">${c.e} ${c.n}</button>`).join('')}</div></div>
+  ${inp('fDia','Día del mes (1 a 28)','','number',r.dia,'min="1" max="28"')}
+  <button class="btn coral" onclick="actualizarFijo('${id}')">Guardar cambios</button>
+  <div style="height:8px"></div>
+  <button class="btn fant" onclick="borrarFijo('${id}');cerrarHoja()">🗑 Eliminar fijo</button>`);}
+function actualizarFijo(id){const r=S.recurrentes.find(x=>x.id===id);if(!r)return;
+  const m=+document.getElementById('fMonto').value,de=document.getElementById('fDesc').value.trim();
+  const dia=Math.min(28,Math.max(1,+document.getElementById('fDia').value||1));
+  if(!m||m<=0||!de){alert('Completa monto y descripción.');return;}
+  r.tipo=fijoTipo;r.monto=m;r.desc=de;r.cat=fijoTipo==='gasto'?fijoCat:null;r.dia=dia;
+  guardar();cerrarHoja();pintar();}
 function aplicarRecurrentes(){
   const ahora=new Date();let cambio=false;
   const cur=new Date(ahora.getFullYear(),ahora.getMonth(),1);
@@ -746,34 +788,58 @@ function aplicarRecurrentes(){
 
 /* ══════════ Gestión de categorías ══════════ */
 function hojaCategorias(){
-  const oc=S.config.catsOcultas||[];
   abrirHoja(`<h3>Categorías de gastos</h3>
-  <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Desactiva las que no uses o crea las tuyas. Los gastos ya registrados no se pierden.</p>
-  <div class="chips" style="margin-bottom:16px">${CATS_BASE.map(c=>
-    `<button class="chip ${oc.includes(c.n)?'':'oncat'}" onclick="toggleCat('${c.n}')">${c.e} ${c.n}</button>`).join('')}</div>
-  ${(S.config.catsExtra||[]).length?`<div style="font-size:12px;color:var(--muted);margin-bottom:8px">Tus categorías</div>
-  <div class="chips" style="margin-bottom:16px">${S.config.catsExtra.map(c=>
-    `<button class="chip oncat" onclick="borrarCatExtra('${c.n}')">${c.e} ${c.n} ✕</button>`).join('')}</div>`:''}
-  <div class="campo"><label>Nueva categoría</label>
-  <input id="ncNom" type="text" placeholder="Nombre, ej: Mascota"></div>
+  <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Toca una para editarla u ocultarla. Los gastos ya registrados no se pierden aunque cambies o quites una categoría.</p>
+  <div style="max-height:38vh;overflow-y:auto;margin-bottom:14px">
+  ${S.config.categorias.map((c,i)=>`<div class="row" onclick="hojaEditarCategoria(${i})" style="${c.oculta?'opacity:.4':''}">
+    <div class="ic" style="background:${c.c}22">${c.e}</div>
+    <div class="tx"><div class="t1">${c.n}</div><div class="t2">${c.oculta?'Oculta · no aparece al elegir':'Activa'}</div></div>
+    <div style="font-size:16px;color:var(--dim)">›</div></div>`).join('')}
+  </div>
+  <div class="fila-btn"><button class="btn coral" onclick="hojaNuevaCategoria()">＋ Nueva categoría</button></div>`);}
+function hojaNuevaCategoria(){
+  abrirHoja(`<h3>Nueva categoría</h3>
+  <div class="campo"><label>Nombre</label><input id="ncNom" type="text" placeholder="Ej: Mascota"></div>
   <div class="campo"><label>Emoji</label><input id="ncEmo" type="text" placeholder="🐾" value="🏷️"></div>
-  <button class="btn coral" onclick="crearCategoria()">Crear categoría</button>`);}
-function toggleCat(n){
-  const oc=S.config.catsOcultas||[];const i=oc.indexOf(n);
-  if(i>=0)oc.splice(i,1);else oc.push(n);
-  S.config.catsOcultas=oc;guardar();hojaCategorias();}
+  <button class="btn coral" onclick="crearCategoria()">Crear categoría</button>
+  <div style="height:8px"></div>
+  <button class="btn fant" onclick="hojaCategorias()">‹ Volver al listado</button>`);}
 function crearCategoria(){
   const n=document.getElementById('ncNom').value.trim();
   if(!n){alert('Ponle un nombre a la categoría.');return;}
   if(catsTodas().some(c=>c.n.toLowerCase()===n.toLowerCase())){alert('Ya existe una categoría con ese nombre.');return;}
-  const ex=S.config.catsExtra||[];
-  const col=PALETA_EXTRA[ex.length%PALETA_EXTRA.length];
-  ex.push({n,e:document.getElementById('ncEmo').value.trim()||'🏷️',c:col});
-  S.config.catsExtra=ex;guardar();hojaCategorias();}
-function borrarCatExtra(n){
-  const usada=S.gastos.some(g=>g.cat===n)||S.recurrentes.some(r=>r.cat===n);
+  const col=PALETA_EXTRA[S.config.categorias.length%PALETA_EXTRA.length];
+  S.config.categorias.push({n,e:document.getElementById('ncEmo').value.trim()||'🏷️',c:col,oculta:false});
+  guardar();hojaCategorias();}
+function hojaEditarCategoria(i){
+  const c=S.config.categorias[i];if(!c)return;
+  abrirHoja(`<h3>Editar categoría</h3>
+  <div class="campo"><label>Nombre</label><input id="ecNom" type="text" value="${c.n}"></div>
+  <div class="campo"><label>Emoji</label><input id="ecEmo" type="text" value="${c.e}"></div>
+  <div class="campo"><label>Color</label><input id="ecCol" type="color" value="${c.c}" style="height:44px;padding:4px"></div>
+  <button class="btn coral" onclick="actualizarCategoria(${i})">Guardar cambios</button>
+  <div style="height:8px"></div>
+  <button class="btn fant" onclick="ocultarCategoria(${i})">${c.oculta?'👁 Mostrar de nuevo':'🙈 Ocultar (no borra tus gastos)'}</button>
+  <div style="height:8px"></div>
+  <button class="btn fant" style="color:var(--coral)" onclick="borrarCategoria(${i})">🗑 Eliminar categoría</button>`);}
+function actualizarCategoria(i){
+  const c=S.config.categorias[i];if(!c)return;
+  const n=document.getElementById('ecNom').value.trim();
+  if(!n){alert('El nombre no puede estar vacío.');return;}
+  if(n.toLowerCase()!==c.n.toLowerCase()&&catsTodas().some(x=>x.n.toLowerCase()===n.toLowerCase())){
+    alert('Ya existe otra categoría con ese nombre.');return;}
+  const viejoN=c.n;
+  c.e=document.getElementById('ecEmo').value.trim()||c.e;
+  c.c=document.getElementById('ecCol').value||c.c;
+  if(n!==viejoN){migrarCategoria(viejoN,n);c.n=n;}
+  guardar();hojaCategorias();}
+function ocultarCategoria(i){const c=S.config.categorias[i];if(!c)return;
+  c.oculta=!c.oculta;guardar();hojaEditarCategoria(i);}
+function borrarCategoria(i){const c=S.config.categorias[i];if(!c)return;
+  const usada=S.gastos.some(g=>g.cat===c.n)||S.recurrentes.some(r=>r.cat===c.n);
   if(usada&&!confirm('Esta categoría tiene gastos registrados. Si la borras, esos gastos se mostrarán como "Otros". ¿Continuar?'))return;
-  S.config.catsExtra=(S.config.catsExtra||[]).filter(c=>c.n!==n);guardar();hojaCategorias();}
+  if(!usada&&!confirm('¿Eliminar esta categoría?'))return;
+  S.config.categorias.splice(i,1);guardar();hojaCategorias();}
 
 /* ══════════ Ingresos ══════════ */
 function hojaNuevoIngreso(){abrirHoja(`<h3>Registrar ingreso</h3>
@@ -1047,7 +1113,13 @@ function impJSON(ev){const f=ev.target.files[0];if(!f)return;
       S.config=S.config||{};S.config.presupuestos=S.config.presupuestos||{};
       S.ingresos=S.ingresos||[];S.recurrentes=S.recurrentes||[];
 S.metas.forEach(m=>(m.aportes||[]).forEach(a=>{if(!a.id)a.id=uid();}));
-S.config.catsExtra=S.config.catsExtra||[];S.config.catsOcultas=S.config.catsOcultas||[];
+if(!S.config.categorias){
+  // Primera vez: sembrar desde CATS_SEMILLA, respetando ocultas/creadas de una versión anterior si existían
+  const ocPrev=S.config.catsOcultas||[],exPrev=S.config.catsExtra||[];
+  S.config.categorias=[...CATS_SEMILLA.map(c=>({...c,oculta:ocPrev.includes(c.n)})),
+    ...exPrev.map(c=>({...c,oculta:false}))];
+  delete S.config.catsOcultas;delete S.config.catsExtra;
+}
       guardar();cerrarHoja();pintar();}
   }catch(e){alert('El archivo no es un respaldo válido de VidaOS.');}};
   r.readAsText(f);}
