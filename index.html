@@ -357,10 +357,14 @@ if(!S.config.categorias){
   delete S.config.catsOcultas;delete S.config.catsExtra;
 }
 S.cuentas=S.cuentas||[
-  {id:'mp',nombre:'Mercado Pago',emoji:'💚',saldo:0},
-  {id:'santander',nombre:'Santander',emoji:'🏦',saldo:0}];
-S.pagosTarjeta=S.pagosTarjeta||[];
+  {id:'mp',nombre:'Mercado Pago',emoji:'💚',saldo:0,tasaAnual:5,ultimoInteres:hoy()},
+  {id:'santander',nombre:'Santander',emoji:'🏦',saldo:0,tasaAnual:0,ultimoInteres:hoy()}];
+S.traspasos=S.traspasos||[];
 if(!S.tarjeta)S.tarjeta={cupoTotal:2000000,utilizado:579114};
+// Migración: cuentas creadas antes de tener tasa de interés
+S.cuentas.forEach(c=>{
+  if(c.tasaAnual===undefined)c.tasaAnual=(c.id==='mp')?5:0;
+  if(c.ultimoInteres===undefined)c.ultimoInteres=hoy();});
 function guardarSolo(){ if(hayStorage){try{localStorage.setItem(CLAVE,JSON.stringify(S));}catch(e){}} }
 function guardar(){ guardarSolo(); planificarSync(); }
 
@@ -437,6 +441,22 @@ function efectoIngreso(i,aplicar){
 function medioLabel(m){
   if(m==='credito')return'💳 Tarjeta de crédito';
   const c=S.cuentas.find(x=>x.id===m);return c?c.emoji+' '+c.nombre:'Sin especificar';}
+/* Acumula interés diario en cuentas con tasaAnual>0 (ej: Mercado Pago). Se ejecuta al abrir la app. */
+function aplicarRentaCuentas(){
+  const finStr=hoy();let cambio=false;
+  S.cuentas.forEach(c=>{
+    if(!c.tasaAnual){c.ultimoInteres=finStr;return;}
+    if(!c.ultimoInteres){c.ultimoInteres=finStr;return;}
+    let d=new Date(c.ultimoInteres+'T00:00:00');
+    const fin=new Date(finStr+'T00:00:00');
+    const tasaDiaria=(c.tasaAnual/100)/365;
+    let dias=0;
+    while(d<fin&&dias<3650){ // tope de seguridad por si pasó mucho tiempo sin abrir la app
+      c.saldo=c.saldo*(1+tasaDiaria);
+      d.setDate(d.getDate()+1);dias++;cambio=true;}
+    if(dias>0)c.saldo=Math.round(c.saldo);
+    c.ultimoInteres=finStr;});
+  if(cambio)guardarSolo();}
 const fmtFecha=f=>{const[y,mo,d]=f.split('-');return +d+' '+MESES[+mo-1].slice(0,3)+' '+y;};
 function infoPlazo(m){
   if(!m.fechaLimite)return'';
@@ -583,7 +603,7 @@ function pintar(){
   const ymPrefix=y+'-'+String(mo+1).padStart(2,'0');
   const av=S.metas.flatMap(m=>m.aportes.filter(a=>a.fecha.startsWith(ymPrefix))
     .map(a=>({...a,_meta:m}))).sort((a,b)=>b.fecha.localeCompare(a.fecha));
-  const pv=S.pagosTarjeta.filter(p=>p.fecha.startsWith(ymPrefix)).sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  const pv=S.traspasos.filter(t=>t.fecha.startsWith(ymPrefix)).sort((a,b)=>b.fecha.localeCompare(a.fecha));
   const totV=gv.reduce((s,g)=>s+g.monto,0);
   const totI=iv.reduce((s,i)=>s+i.monto,0);
   const totA=av.reduce((s,a)=>s+a.monto,0);
@@ -617,11 +637,11 @@ function pintar(){
       <div class="tx"><div class="t1">Ahorro: ${m._meta.nombre}</div><div class="t2">Aporte a meta · ${m.fecha} · toca para editar</div></div>
       <div class="monto" style="color:var(--oro)">−${CLP(m.monto)}</div>
       <button class="del" onclick="event.stopPropagation();borrarAporte('${m._meta.id}','${m.id}')">✕</button></div>`;
-    if(m._t==='p'){const cu=S.cuentas.find(c=>c.id===m.cuenta);
-      return `<div class="row" onclick="hojaEditarPagoTarjeta('${m.id}')"><div class="ic" style="background:var(--card2)">💳</div>
-      <div class="tx"><div class="t1">Pago tarjeta de crédito</div><div class="t2">Traspaso desde ${cu?cu.nombre:'cuenta'} · ${m.fecha} · toca para editar</div></div>
+    if(m._t==='p'){
+      return `<div class="row" onclick="hojaEditarTraspaso('${m.id}')"><div class="ic" style="background:var(--card2)">${m.destino==='credito'?'💳':(m.origen==='credito'?'💳':'⇄')}</div>
+      <div class="tx"><div class="t1">${labelTraspaso(m)}</div><div class="t2">${m.fecha} · toca para editar</div></div>
       <div class="monto" style="color:var(--muted)">↦ ${CLP(m.monto)}</div>
-      <button class="del" onclick="event.stopPropagation();borrarPagoTarjeta('${m.id}')">✕</button></div>`;}
+      <button class="del" onclick="event.stopPropagation();borrarTraspaso('${m.id}')">✕</button></div>`;}
     const c=catsTodas().find(x=>x.n===m.cat)||CAT_OTROS;
     return `<div class="row" onclick="hojaEditarGasto('${m.id}')"><div class="ic" style="background:${c.c}22">${c.e}</div>
       <div class="tx"><div class="t1">${m.nota||m.cat}</div><div class="t2">${m.cat} · ${medioLabel(m.medioPago)} · ${m.fecha} · toca para editar</div></div>
@@ -760,8 +780,8 @@ function hojaNuevoFijo(){fijoTipo='gasto';fijoCat='Suscripciones';fijoMedio='mp'
   ${inp('fDesc','Descripción','Netflix / Sueldo')}
   <div class="campo" id="fCatWrap"><label>Categoría</label><div class="chips" id="fChips">${catsActivas().map(c=>
     `<button class="chip ${c.n===fijoCat?'oncat':''}" onclick="selFijoCat('${c.n}')">${c.e} ${c.n}</button>`).join('')}</div></div>
-  <div class="campo" id="fMedioWrap"><label>Medio de pago</label><div class="chips" id="fmChips">${chipsMedio(fijoMedio)}</div></div>
-  <div class="campo" id="fCuentaWrap" style="display:none"><label>¿A qué cuenta llega?</label><div class="chips" id="fcChips">${chipsCuenta(fijoMedio==='credito'?'mp':fijoMedio)}</div></div>
+  <div class="campo" id="fMedioWrap"><label>Medio de pago</label><div class="chips" id="fmChips">${chipsMedio(fijoMedio,'selFijoMedio')}</div></div>
+  <div class="campo" id="fCuentaWrap" style="display:none"><label>¿A qué cuenta llega?</label><div class="chips" id="fcChips">${chipsCuenta(fijoMedio==='credito'?'mp':fijoMedio,'selFijoMedio')}</div></div>
   ${inp('fDia','Día del mes (1 a 28)','5','number','5','min="1" max="28"')}
   <button class="btn coral" onclick="guardarFijo()">Guardar fijo</button>`);}
 function selFijoTipo(t){fijoTipo=t;
@@ -774,8 +794,8 @@ function selFijoTipo(t){fijoTipo=t;
 function selFijoCat(n){fijoCat=n;document.querySelectorAll('#fChips .chip').forEach(c=>
   c.classList.toggle('oncat',c.textContent.includes(n)));}
 function selFijoMedio(id){fijoMedio=id;
-  const elM=document.getElementById('fmChips');if(elM)elM.innerHTML=chipsMedio(fijoMedio);
-  const elC=document.getElementById('fcChips');if(elC)elC.innerHTML=chipsCuenta(fijoMedio);}
+  const elM=document.getElementById('fmChips');if(elM)elM.innerHTML=chipsMedio(fijoMedio,'selFijoMedio');
+  const elC=document.getElementById('fcChips');if(elC)elC.innerHTML=chipsCuenta(fijoMedio==='credito'?'mp':fijoMedio,'selFijoMedio');}
 function guardarFijo(){
   const m=+document.getElementById('fMonto').value,de=document.getElementById('fDesc').value.trim();
   const dia=Math.min(28,Math.max(1,+document.getElementById('fDia').value||1));
@@ -797,8 +817,8 @@ function hojaEditarFijo(id){const r=S.recurrentes.find(x=>x.id===id);if(!r)retur
   ${inp('fDesc','Descripción','','text',r.desc)}
   <div class="campo" id="fCatWrap" style="${fijoTipo==='gasto'?'':'display:none'}"><label>Categoría</label><div class="chips" id="fChips">${catsActivas().map(c=>
     `<button class="chip ${c.n===fijoCat?'oncat':''}" onclick="selFijoCat('${c.n}')">${c.e} ${c.n}</button>`).join('')}</div></div>
-  <div class="campo" id="fMedioWrap" style="${fijoTipo==='gasto'?'':'display:none'}"><label>Medio de pago</label><div class="chips" id="fmChips">${chipsMedio(fijoMedio)}</div></div>
-  <div class="campo" id="fCuentaWrap" style="${fijoTipo==='ingreso'?'':'display:none'}"><label>¿A qué cuenta llega?</label><div class="chips" id="fcChips">${chipsCuenta(fijoMedio==='credito'?'mp':fijoMedio)}</div></div>
+  <div class="campo" id="fMedioWrap" style="${fijoTipo==='gasto'?'':'display:none'}"><label>Medio de pago</label><div class="chips" id="fmChips">${chipsMedio(fijoMedio,'selFijoMedio')}</div></div>
+  <div class="campo" id="fCuentaWrap" style="${fijoTipo==='ingreso'?'':'display:none'}"><label>¿A qué cuenta llega?</label><div class="chips" id="fcChips">${chipsCuenta(fijoMedio==='credito'?'mp':fijoMedio,'selFijoMedio')}</div></div>
   ${inp('fDia','Día del mes (1 a 28)','','number',r.dia,'min="1" max="28"')}
   <button class="btn coral" onclick="actualizarFijo('${id}')">Guardar cambios</button>
   <div style="height:8px"></div>
@@ -887,8 +907,8 @@ function borrarCategoria(i){const c=S.config.categorias[i];if(!c)return;
 
 /* ══════════ Ingresos ══════════ */
 let cuentaSel='mp';
-function chipsCuenta(sel){return S.cuentas.map(c=>
-  `<button class="chip ${c.id===sel?'oncat':''}" onclick="selCuenta('${c.id}')">${c.emoji} ${c.nombre}</button>`).join('');}
+function chipsCuenta(sel,fn){fn=fn||'selCuenta';return S.cuentas.map(c=>
+  `<button class="chip ${c.id===sel?'oncat':''}" onclick="${fn}('${c.id}')">${c.emoji} ${c.nombre}</button>`).join('');}
 function selCuenta(id){cuentaSel=id;document.getElementById('cChips').innerHTML=chipsCuenta(cuentaSel);}
 function hojaNuevoIngreso(){cuentaSel='mp';abrirHoja(`<h3>Registrar ingreso</h3>
   ${inp('iMonto','Monto (CLP)','1500000','number','','inputmode="numeric"')}
@@ -923,49 +943,76 @@ function actualizarIngreso(id){const i=S.ingresos.find(x=>x.id===id);if(!i)retur
   guardar();cerrarHoja();pintar();}
 
 /* ══════════ Tarjeta de crédito y cuentas ══════════ */
-function hojaPagarTarjeta(){
-  const deuda=S.tarjeta.utilizado;
-  abrirHoja(`<h3>Pagar tarjeta de crédito</h3>
-  <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Debes ${CLP(deuda)} de ${CLP(S.tarjeta.cupoTotal)}. Este pago no se cuenta de nuevo como gasto — solo mueve la plata de tu cuenta y libera cupo.</p>
-  ${inp('ptMonto','Monto a pagar (CLP)','','number',deuda||'','inputmode="numeric"')}
-  <div class="campo"><label>¿Desde qué cuenta?</label><div class="chips" id="ptChips">${S.cuentas.map(c=>
-    `<button class="chip ${c.id==='mp'?'oncat':''}" data-c="${c.id}" onclick="document.querySelectorAll('#ptChips .chip').forEach(x=>x.classList.toggle('oncat',x===this))">${c.emoji} ${c.nombre} (${CLP(c.saldo)})</button>`).join('')}</div></div>
-  ${inp('ptFecha','Fecha','','date',hoy())}
-  <button class="btn coral" onclick="registrarPagoTarjeta()">Registrar pago</button>`);}
-function registrarPagoTarjeta(){
-  const m=+document.getElementById('ptMonto').value;
+/* ── Traslado de fondos (cuenta↔cuenta, pago de tarjeta, avance de tarjeta) ── */
+let trOrigen='mp',trDestino='santander';
+function nombreMedio(id){if(id==='credito')return'Tarjeta de crédito';const c=S.cuentas.find(x=>x.id===id);return c?c.nombre:id;}
+function destinoPorDefecto(origen){
+  if(origen==='credito')return S.cuentas[0]?.id||'mp';
+  const otra=S.cuentas.find(c=>c.id!==origen);
+  return otra?otra.id:'credito';}
+function chipsTrOrigen(sel){return[...S.cuentas.map(c=>({id:c.id,nombre:c.nombre,emoji:c.emoji})),
+  {id:'credito',nombre:'Tarjeta (avance)',emoji:'💳'}]
+  .map(o=>`<button class="chip ${o.id===sel?'oncat':''}" onclick="selTrOrigen('${o.id}')">${o.emoji} ${o.nombre}</button>`).join('');}
+function chipsTrDestino(sel){return[...S.cuentas.map(c=>({id:c.id,nombre:c.nombre,emoji:c.emoji})),
+  {id:'credito',nombre:'Tarjeta (pago)',emoji:'💳'}]
+  .map(o=>`<button class="chip ${o.id===sel?'oncat':''}" onclick="selTrDestino('${o.id}')">${o.emoji} ${o.nombre}</button>`).join('');}
+function selTrOrigen(id){trOrigen=id;if(trOrigen===trDestino)trDestino=destinoPorDefecto(trOrigen);
+  document.getElementById('trOChips').innerHTML=chipsTrOrigen(trOrigen);
+  document.getElementById('trDChips').innerHTML=chipsTrDestino(trDestino);}
+function selTrDestino(id){if(id===trOrigen){alert('El origen y el destino no pueden ser el mismo.');return;}
+  trDestino=id;document.getElementById('trDChips').innerHTML=chipsTrDestino(trDestino);}
+function efectoTraspaso(t,aplicar){
+  const mult=aplicar?1:-1;
+  if(t.origen==='credito')S.tarjeta.utilizado=Math.max(0,S.tarjeta.utilizado+mult*t.monto);
+  else{const c=S.cuentas.find(x=>x.id===t.origen);if(c)c.saldo-=mult*t.monto;}
+  if(t.destino==='credito')S.tarjeta.utilizado=Math.max(0,S.tarjeta.utilizado-mult*t.monto);
+  else{const c=S.cuentas.find(x=>x.id===t.destino);if(c)c.saldo+=mult*t.monto;}}
+function labelTraspaso(t){
+  if(t.destino==='credito')return'Pago tarjeta de crédito';
+  if(t.origen==='credito')return'Avance de tarjeta de crédito';
+  return`Traspaso: ${nombreMedio(t.origen)} → ${nombreMedio(t.destino)}`;}
+function hojaTraspaso(presetOrigen,presetDestino,presetMonto){
+  trOrigen=presetOrigen||'mp';trDestino=presetDestino||destinoPorDefecto(trOrigen);
+  if(trOrigen===trDestino)trDestino=destinoPorDefecto(trOrigen);
+  abrirHoja(`<h3>Trasladar fondos</h3>
+  <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Esto no se cuenta como gasto ni ingreso — solo mueve la plata entre tus cuentas y tu tarjeta.</p>
+  ${inp('trMonto','Monto (CLP)','','number',presetMonto||'','inputmode="numeric"')}
+  <div class="campo"><label>Desde</label><div class="chips" id="trOChips">${chipsTrOrigen(trOrigen)}</div></div>
+  <div class="campo"><label>Hacia</label><div class="chips" id="trDChips">${chipsTrDestino(trDestino)}</div></div>
+  ${inp('trFecha','Fecha','','date',hoy())}
+  <button class="btn menta" onclick="registrarTraspaso()">Registrar traslado</button>`);}
+function registrarTraspaso(){
+  const m=+document.getElementById('trMonto').value;
   if(!m||m<=0){alert('Ingresa un monto válido.');return;}
-  const chip=document.querySelector('#ptChips .chip.oncat');
-  const cuentaId=chip?chip.dataset.c:'mp';
-  const cuenta=S.cuentas.find(c=>c.id===cuentaId);
-  const p={id:uid(),monto:m,cuenta:cuentaId,fecha:document.getElementById('ptFecha').value||hoy()};
-  S.pagosTarjeta.push(p);
-  if(cuenta)cuenta.saldo-=m;
-  S.tarjeta.utilizado=Math.max(0,S.tarjeta.utilizado-m);
+  if(trOrigen===trDestino){alert('El origen y el destino no pueden ser el mismo.');return;}
+  const t={id:uid(),monto:m,origen:trOrigen,destino:trDestino,fecha:document.getElementById('trFecha').value||hoy()};
+  S.traspasos.push(t);efectoTraspaso(t,true);
   guardar();cerrarHoja();pintar();}
-function hojaEditarPagoTarjeta(id){const p=S.pagosTarjeta.find(x=>x.id===id);if(!p)return;
-  abrirHoja(`<h3>Editar pago de tarjeta</h3>
-  ${inp('ptMonto','Monto (CLP)','','number',p.monto,'inputmode="numeric"')}
-  <div class="campo"><label>¿Desde qué cuenta?</label><div class="chips" id="ptChips">${S.cuentas.map(c=>
-    `<button class="chip ${c.id===p.cuenta?'oncat':''}" data-c="${c.id}" onclick="document.querySelectorAll('#ptChips .chip').forEach(x=>x.classList.toggle('oncat',x===this))">${c.emoji} ${c.nombre}</button>`).join('')}</div></div>
-  ${inp('ptFecha','Fecha','','date',p.fecha)}
-  <button class="btn coral" onclick="actualizarPagoTarjeta('${id}')">Guardar cambios</button>
+function hojaEditarTraspaso(id){const t=S.traspasos.find(x=>x.id===id);if(!t)return;
+  trOrigen=t.origen;trDestino=t.destino;
+  abrirHoja(`<h3>Editar traslado</h3>
+  ${inp('trMonto','Monto (CLP)','','number',t.monto,'inputmode="numeric"')}
+  <div class="campo"><label>Desde</label><div class="chips" id="trOChips">${chipsTrOrigen(trOrigen)}</div></div>
+  <div class="campo"><label>Hacia</label><div class="chips" id="trDChips">${chipsTrDestino(trDestino)}</div></div>
+  ${inp('trFecha','Fecha','','date',t.fecha)}
+  <button class="btn menta" onclick="actualizarTraspaso('${id}')">Guardar cambios</button>
   <div style="height:8px"></div>
-  <button class="btn fant" onclick="borrarPagoTarjeta('${id}');cerrarHoja()">🗑 Eliminar pago</button>`);}
-function actualizarPagoTarjeta(id){const p=S.pagosTarjeta.find(x=>x.id===id);if(!p)return;
-  const m=+document.getElementById('ptMonto').value;
+  <button class="btn fant" onclick="borrarTraspaso('${id}');cerrarHoja()">🗑 Eliminar traslado</button>`);}
+function actualizarTraspaso(id){const t=S.traspasos.find(x=>x.id===id);if(!t)return;
+  const m=+document.getElementById('trMonto').value;
   if(!m||m<=0){alert('Ingresa un monto válido.');return;}
-  const cViejo=S.cuentas.find(c=>c.id===p.cuenta);if(cViejo)cViejo.saldo+=p.monto;
-  S.tarjeta.utilizado+=p.monto;
-  const chip=document.querySelector('#ptChips .chip.oncat');
-  p.cuenta=chip?chip.dataset.c:p.cuenta;p.monto=m;p.fecha=document.getElementById('ptFecha').value||p.fecha;
-  const cNuevo=S.cuentas.find(c=>c.id===p.cuenta);if(cNuevo)cNuevo.saldo-=m;
-  S.tarjeta.utilizado=Math.max(0,S.tarjeta.utilizado-m);
+  if(trOrigen===trDestino){alert('El origen y el destino no pueden ser el mismo.');return;}
+  efectoTraspaso(t,false);
+  t.monto=m;t.origen=trOrigen;t.destino=trDestino;t.fecha=document.getElementById('trFecha').value||t.fecha;
+  efectoTraspaso(t,true);
   guardar();cerrarHoja();pintar();}
-function borrarPagoTarjeta(id){const p=S.pagosTarjeta.find(x=>x.id===id);if(!p)return;
-  const c=S.cuentas.find(x=>x.id===p.cuenta);if(c)c.saldo+=p.monto;
-  S.tarjeta.utilizado+=p.monto;
-  S.pagosTarjeta=S.pagosTarjeta.filter(x=>x.id!==id);guardar();pintar();}
+function borrarTraspaso(id){const t=S.traspasos.find(x=>x.id===id);if(!t)return;
+  efectoTraspaso(t,false);
+  S.traspasos=S.traspasos.filter(x=>x.id!==id);guardar();pintar();}
+/* Atajos: pagar el total de la tarjeta / solicitar un avance */
+function hojaPagarTarjeta(){hojaTraspaso(null,'credito',S.tarjeta.utilizado||null);}
+function hojaSolicitarAvance(){hojaTraspaso('credito',null,null);}
+
 function hojaEditarCupo(){
   abrirHoja(`<h3>Cupo de la tarjeta</h3>
   ${inp('tcTotal','Cupo total (CLP)','','number',S.tarjeta.cupoTotal,'inputmode="numeric"')}
@@ -978,20 +1025,23 @@ function actualizarCupo(){
   S.tarjeta.cupoTotal=t;S.tarjeta.utilizado=Math.max(0,u||0);
   guardar();cerrarHoja();pintar();}
 function hojaAjustarCuenta(id){const c=S.cuentas.find(x=>x.id===id);if(!c)return;
-  abrirHoja(`<h3>Ajustar saldo · ${c.emoji} ${c.nombre}</h3>
-  <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Usa esto para corregir el saldo y que calce con tu cuenta real (por ejemplo, la primera vez que la configuras).</p>
+  abrirHoja(`<h3>Ajustar · ${c.emoji} ${c.nombre}</h3>
+  <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Corrige el saldo para que calce con tu cuenta real. Si la cuenta paga interés (como Mercado Pago), ponle su tasa anual y VidaOS lo va sumando solo cada día.</p>
   ${inp('caSaldo','Saldo actual (CLP)','','number',c.saldo,'inputmode="numeric"')}
-  <button class="btn menta" onclick="actualizarSaldoCuenta('${id}')">Guardar saldo</button>`);}
+  ${inp('caTasa','Tasa de interés anual (%) — 0 si no aplica','5','number',c.tasaAnual||0,'inputmode="decimal" step="0.1"')}
+  <button class="btn menta" onclick="actualizarSaldoCuenta('${id}')">Guardar</button>`);}
 function actualizarSaldoCuenta(id){const c=S.cuentas.find(x=>x.id===id);if(!c)return;
   const v=document.getElementById('caSaldo').value;
   if(v===''){alert('Ingresa un monto.');return;}
-  c.saldo=+v;guardar();cerrarHoja();pintar();}
+  c.saldo=+v;c.tasaAnual=Math.max(0,+document.getElementById('caTasa').value||0);
+  guardar();cerrarHoja();pintar();}
 function renderCuentas(){
   const el=document.getElementById('listaCuentas');if(!el)return;
   el.innerHTML=S.cuentas.map(c=>`<div class="row" onclick="hojaAjustarCuenta('${c.id}')">
     <div class="ic" style="background:var(--card2)">${c.emoji}</div>
-    <div class="tx"><div class="t1">${c.nombre}</div><div class="t2">toca para ajustar saldo</div></div>
-    <div class="monto" style="color:${c.saldo<0?'var(--coral)':'var(--text)'}">${CLP(c.saldo)}</div></div>`).join('');}
+    <div class="tx"><div class="t1">${c.nombre}</div><div class="t2">${c.tasaAnual?`${c.tasaAnual}% anual · `:''}toca para ajustar</div></div>
+    <div class="monto" style="color:${c.saldo<0?'var(--coral)':'var(--text)'}">${CLP(c.saldo)}</div></div>`).join('')
+    +`<div class="fila-btn"><button class="btn menta chico" onclick="hojaTraspaso()">🔁 Trasladar fondos</button></div>`;}
 function renderTarjeta(){
   const el=document.getElementById('cardTarjeta');if(!el)return;
   const {cupoTotal,utilizado}=S.tarjeta,disp=cupoTotal-utilizado;
@@ -999,7 +1049,8 @@ function renderTarjeta(){
   const col=pct>=90?'var(--coral)':pct>=70?'var(--oro)':'var(--menta)';
   el.innerHTML=`<div class="pbar"><div class="pfill" style="width:${pct}%;background:${col}"></div></div>
     <div class="t2" style="margin-top:7px">Disponible <b style="color:${col}">${CLP(disp)}</b> de ${CLP(cupoTotal)} · debes ${CLP(utilizado)}</div>
-    <div class="fila-btn"><button class="btn coral chico" onclick="hojaPagarTarjeta()">Pagar tarjeta</button></div>`;}
+    <div class="fila-btn"><button class="btn coral chico" onclick="hojaPagarTarjeta()">Pagar tarjeta</button>
+    <button class="btn fant chico" onclick="hojaSolicitarAvance()">Solicitar avance</button></div>`;}
 
 /* ══════════ Proyección de metas ══════════ */
 function proyeccion(m){
@@ -1052,8 +1103,8 @@ function cerrarHoja(){const hj=document.getElementById('hoja');
 const inp=(id,lab,ph,tipo='text',val='',extra='')=>
   `<div class="campo"><label>${lab}</label><input id="${id}" type="${tipo}" placeholder="${ph}" value="${val}" ${extra}></div>`;
 
-function chipsMedio(sel){return catsMedio().map(m=>
-  `<button class="chip ${m.id===sel?'oncat':''}" onclick="selMedio('${m.id}')">${m.emoji} ${m.nombre}</button>`).join('');}
+function chipsMedio(sel,fn){fn=fn||'selMedio';return catsMedio().map(m=>
+  `<button class="chip ${m.id===sel?'oncat':''}" onclick="${fn}('${m.id}')">${m.emoji} ${m.nombre}</button>`).join('');}
 function catsMedio(){return[...S.cuentas,{id:'credito',nombre:'Tarjeta de crédito',emoji:'💳'}];}
 
 /* — Gasto — */
@@ -1264,10 +1315,14 @@ if(!S.config.categorias){
   delete S.config.catsOcultas;delete S.config.catsExtra;
 }
 S.cuentas=S.cuentas||[
-  {id:'mp',nombre:'Mercado Pago',emoji:'💚',saldo:0},
-  {id:'santander',nombre:'Santander',emoji:'🏦',saldo:0}];
-S.pagosTarjeta=S.pagosTarjeta||[];
+  {id:'mp',nombre:'Mercado Pago',emoji:'💚',saldo:0,tasaAnual:5,ultimoInteres:hoy()},
+  {id:'santander',nombre:'Santander',emoji:'🏦',saldo:0,tasaAnual:0,ultimoInteres:hoy()}];
+S.traspasos=S.traspasos||[];
 if(!S.tarjeta)S.tarjeta={cupoTotal:2000000,utilizado:579114};
+// Migración: cuentas creadas antes de tener tasa de interés
+S.cuentas.forEach(c=>{
+  if(c.tasaAnual===undefined)c.tasaAnual=(c.id==='mp')?5:0;
+  if(c.ultimoInteres===undefined)c.ultimoInteres=hoy();});
       guardar();cerrarHoja();pintar();}
   }catch(e){alert('El archivo no es un respaldo válido de VidaOS.');}};
   r.readAsText(f);}
@@ -1275,7 +1330,7 @@ function expCSV(){
   const filas=[['tipo','fecha','categoria','descripcion','monto','medio'],
     ...S.gastos.map(g=>['gasto',g.fecha,g.cat,(g.nota||'').replace(/;/g,','),-g.monto,medioLabel(g.medioPago).replace(/;/g,',')]),
     ...S.ingresos.map(i=>['ingreso',i.fecha,'',(i.desc||'').replace(/;/g,','),i.monto,medioLabel(i.cuenta).replace(/;/g,',')]),
-    ...S.pagosTarjeta.map(p=>['pago_tarjeta',p.fecha,'','Pago tarjeta de crédito',-p.monto,medioLabel(p.cuenta).replace(/;/g,',')])];
+    ...S.traspasos.map(t=>['traspaso',t.fecha,'',labelTraspaso(t).replace(/;/g,','),-t.monto,`${medioLabel(t.origen)} → ${medioLabel(t.destino)}`.replace(/;/g,',')])];
   descargar('finanzas_vidaos.csv','\uFEFF'+filas.map(f=>f.join(';')).join('\n'),'text/csv');}
 function borrarTodo(){if(confirm('¿Seguro? Se borra TODO: metas, gastos, tareas y hábitos.')&&
   confirm('Última confirmación: esta acción no se puede deshacer.')){S=porDefecto();guardar();cerrarHoja();pintar();}}
@@ -1283,6 +1338,7 @@ function borrarTodo(){if(confirm('¿Seguro? Se borra TODO: metas, gastos, tareas
 /* ══════════ Arranque ══════════ */
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 aplicarRecurrentes();
+aplicarRentaCuentas();
 pintar();
 </script>
 </body>
