@@ -216,6 +216,10 @@ nav{position:fixed;left:0;right:0;bottom:0;z-index:30;
       <div class="det" id="xpDet"></div>
     </div>
     <div class="kpis" id="kpis"></div>
+    <div id="avisoPresupuestoInicio"></div>
+
+    <div class="sect"><h2>Resumen semanal</h2></div>
+    <div class="card" id="resumenSemanal"></div>
 
     <div class="sect"><h2>Gastos del mes</h2><button class="lnk" onclick="irTab('gastos')">Ver todo ›</button></div>
     <div class="card"><div class="grafico" id="donutGastos"></div></div>
@@ -250,6 +254,7 @@ nav{position:fixed;left:0;right:0;bottom:0;z-index:30;
     <div class="card" id="listaCuentas"></div>
     <div class="sect"><h2>💳 Tarjeta de crédito</h2><button class="lnk" onclick="hojaEditarCupo()">Editar cupo ›</button></div>
     <div class="card" id="cardTarjeta"></div>
+    <div class="card" id="evoTarjeta" style="margin-top:8px"></div>
     <div class="sect"><h2>Presupuesto del mes</h2><button class="lnk" onclick="hojaPresupuestos()">Configurar ›</button></div>
     <div class="card" id="listaPres"></div>
     <div class="sect"><h2>Por categoría</h2></div>
@@ -259,6 +264,7 @@ nav{position:fixed;left:0;right:0;bottom:0;z-index:30;
     <div class="sect"><h2>Fijos mensuales</h2><button class="lnk" onclick="hojaNuevoFijo()">＋ Agregar ›</button></div>
     <div class="card" id="listaFijos"></div>
     <div class="sect"><h2>Movimientos</h2></div>
+    <div class="campo" style="margin-top:0"><input type="text" placeholder="🔍 Buscar por nota, categoría o cuenta..." oninput="buscarMovimientos(this.value)" value=""></div>
     <div class="card" id="listaGastos"></div>
   </section>
 
@@ -553,6 +559,8 @@ function pintar(){
     <div class="kpi menta"><div class="lab">Mejor racha</div><div class="val">${mejorRacha} 🔥</div>
       <div class="sub">días seguidos</div></div>`;
   donut('donutGastos',gMes);
+  resumenSemanal();
+  avisoPresupuestoInicio(gMes);
 
   document.getElementById('miniMetas').innerHTML=S.metas.length?S.metas.map(m=>{
     const a=ahorradoDe(m),p=Math.min(100,m.objetivo?a/m.objetivo*100:0);
@@ -622,32 +630,15 @@ function pintar(){
       <div class="sub">${tasa===null?'registra ingresos para calcularla':'de tu ingreso fue directo a tus metas'}</div></div>`;
   renderCuentas();
   renderTarjeta();
+  evolucionTarjeta();
   renderPresupuestos(gv);
   donut('donutGastos2',gv);
   evolucion();
   renderFijos();
   const movs=[...gv.map(g=>({...g,_t:'g'})),...iv.map(x=>({...x,_t:'i'})),...av.map(a=>({...a,_t:'a'})),...pv.map(p=>({...p,_t:'p'}))]
     .sort((a,b)=>b.fecha.localeCompare(a.fecha));
-  document.getElementById('listaGastos').innerHTML=movs.length?movs.map(m=>{
-    if(m._t==='i')return `<div class="row" onclick="hojaEditarIngreso('${m.id}')"><div class="ic" style="background:var(--menta-bg)">💰</div>
-      <div class="tx"><div class="t1">${m.desc}</div><div class="t2">Ingreso · ${medioLabel(m.cuenta)} · ${m.fecha} · toca para editar</div></div>
-      <div class="monto" style="color:var(--menta)">+${CLP(m.monto)}</div>
-      <button class="del" onclick="event.stopPropagation();borrarIngreso('${m.id}')">✕</button></div>`;
-    if(m._t==='a')return `<div class="row" onclick="hojaEditarAporte('${m._meta.id}','${m.id}')"><div class="ic" style="background:var(--oro-bg)">${m._meta.emoji}</div>
-      <div class="tx"><div class="t1">Ahorro: ${m._meta.nombre}</div><div class="t2">Aporte a meta · ${m.fecha} · toca para editar</div></div>
-      <div class="monto" style="color:var(--oro)">−${CLP(m.monto)}</div>
-      <button class="del" onclick="event.stopPropagation();borrarAporte('${m._meta.id}','${m.id}')">✕</button></div>`;
-    if(m._t==='p'){
-      return `<div class="row" onclick="hojaEditarTraspaso('${m.id}')"><div class="ic" style="background:var(--card2)">${m.destino==='credito'?'💳':(m.origen==='credito'?'💳':'⇄')}</div>
-      <div class="tx"><div class="t1">${labelTraspaso(m)}</div><div class="t2">${m.fecha} · toca para editar</div></div>
-      <div class="monto" style="color:var(--muted)">↦ ${CLP(m.monto)}</div>
-      <button class="del" onclick="event.stopPropagation();borrarTraspaso('${m.id}')">✕</button></div>`;}
-    const c=catsTodas().find(x=>x.n===m.cat)||CAT_OTROS;
-    return `<div class="row" onclick="hojaEditarGasto('${m.id}')"><div class="ic" style="background:${c.c}22">${c.e}</div>
-      <div class="tx"><div class="t1">${m.nota||m.cat}</div><div class="t2">${m.cat} · ${medioLabel(m.medioPago)} · ${m.fecha} · toca para editar</div></div>
-      <div class="monto" style="color:var(--coral)">−${CLP(m.monto)}</div>
-      <button class="del" onclick="event.stopPropagation();borrarGasto('${m.id}')">✕</button></div>`;
-  }).join(''):'<div class="vacio">Sin movimientos este mes.</div>';
+  ultimosMovs=movs;
+  renderMovimientos();
 
   /* — Tareas — */
   const pend=S.tareas.filter(t=>!t.hecha);
@@ -708,29 +699,44 @@ function cambiarMes(d){mesVista=new Date(mesVista.getFullYear(),mesVista.getMont
 
 
 /* ══════════ Presupuestos por categoría ══════════ */
+/* Devuelve las categorías cerca (≥85%) o excedidas de su presupuesto, para mostrar alertas */
+function alertasPresupuesto(gv){
+  const P=S.config.presupuestos||{};
+  return catsActivas().filter(c=>P[c.n]>0).map(c=>{
+    const gasto=gv.filter(g=>g.cat===c.n).reduce((s,g)=>s+g.monto,0);
+    const pct=gasto/P[c.n]*100;
+    return{cat:c.n,emoji:c.e,gasto,tope:P[c.n],pct};
+  }).filter(x=>x.pct>=85).sort((a,b)=>b.pct-a.pct);}
 function renderPresupuestos(gv){
   const el=document.getElementById('listaPres');if(!el)return;
   const P=S.config.presupuestos||{};
   const conP=catsActivas().filter(c=>P[c.n]>0);
   if(!conP.length){el.innerHTML='<div class="vacio">Define topes por categoría para controlar el mes en tiempo real.<br>Toca "Configurar" arriba.</div>';return;}
-  el.innerHTML=conP.map(c=>{
+  const alertas=alertasPresupuesto(gv);
+  const bannerAlertas=alertas.length?`<div style="margin-bottom:12px">${alertas.map(a=>
+    `<div class="t2" style="color:${a.pct>=100?'var(--coral)':'var(--oro)'};margin-top:4px">${a.pct>=100?'🚨':'⚠️'} ${a.emoji} ${a.cat}: ${a.pct>=100?'excediste el presupuesto en '+CLP(a.gasto-a.tope):'vas en el '+Math.round(a.pct)+'% de tu tope'}</div>`).join('')}</div>`:'';
+  el.innerHTML=bannerAlertas+conP.map(c=>{
     const gasto=gv.filter(g=>g.cat===c.n).reduce((s,g)=>s+g.monto,0);
     const p=Math.min(100,gasto/P[c.n]*100);
-    const col=gasto>=P[c.n]?'var(--coral)':(p>=75?'var(--oro)':'var(--menta)');
+    const col=gasto>=P[c.n]?'var(--coral)':(p>=85?'var(--oro)':'var(--menta)');
     const resta=P[c.n]-gasto;
     return `<div style="margin-top:11px"><div style="display:flex;justify-content:space-between;align-items:baseline;font-size:13.5px">
       <span>${c.e} ${c.n}</span><span class="monto" style="font-size:12px;color:${col}">${CLP(gasto)} / ${CLP(P[c.n])}</span></div>
       <div class="pbar"><div class="pfill" style="width:${p}%;background:${col}"></div></div>
       <div class="t2" style="margin-top:3px">${resta>=0?'Quedan '+CLP(resta):'⚠️ Excedido en '+CLP(-resta)}</div></div>`;
   }).join('');}
-function hojaPresupuestos(){
-  const P=S.config.presupuestos||{};
+function hojaPresupuestos(draft){
+  const P=draft||S.config.presupuestos||{};
   abrirHoja(`<h3>Presupuesto mensual</h3>
   <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Ponle tope a las categorías que quieras controlar. Deja en blanco las demás.
-  <button class="lnk" style="font-size:11.5px" onclick="hojaCategorias()">Gestionar categorías ›</button></p>
+  <button class="lnk" style="font-size:11.5px" onclick="irGestionarCategoriasDesdePresupuesto()">Gestionar categorías ›</button></p>
   ${catsActivas().map((c,i)=>`<div class="campo"><label>${c.e} ${c.n}</label>
   <input id="pres_${i}" type="number" inputmode="numeric" placeholder="Sin tope" value="${P[c.n]||''}"></div>`).join('')}
   <button class="btn coral" onclick="guardarPresupuestos()">Guardar presupuestos</button>`);}
+function irGestionarCategoriasDesdePresupuesto(){
+  const draft={};catsActivas().forEach((c,i)=>{const v=document.getElementById('pres_'+i)?.value;if(v)draft[c.n]=+v;});
+  retornoFormulario=()=>hojaPresupuestos(draft);
+  hojaCategorias();}
 function guardarPresupuestos(){
   const P={};catsActivas().forEach((c,i)=>{const v=+document.getElementById('pres_'+i).value;if(v>0)P[c.n]=v;});
   S.config.presupuestos=P;guardar();cerrarHoja();pintar();}
@@ -756,6 +762,63 @@ function evolucion(){
   if(prev>0){const v=Math.round((cur-prev)/prev*100);
     varTxt=`<div class="t2" style="margin-top:4px;text-align:center">Este mes vs anterior: <b style="color:${v<=0?'var(--menta)':'var(--coral)'}">${v>0?'+':''}${v}%</b></div>`;}
   el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%">${svg}</svg>${varTxt}`;}
+
+/* ══════════ Evolución del uso de la tarjeta (cargos mensuales a crédito) ══════════ */
+function evolucionTarjeta(){
+  const el=document.getElementById('evoTarjeta');if(!el)return;
+  const ahora=new Date(),datos=[];
+  for(let i=5;i>=0;i--){
+    const d=new Date(ahora.getFullYear(),ahora.getMonth()-i,1);
+    const tot=gastosDeMes(d.getFullYear(),d.getMonth()).filter(g=>g.medioPago==='credito').reduce((s,g)=>s+g.monto,0);
+    datos.push({lab:MESES[d.getMonth()].slice(0,3),tot});}
+  if(datos.every(x=>!x.tot)){el.innerHTML='<div class="vacio">Aún no hay cargos a crédito registrados.</div>';return;}
+  const max=Math.max(...datos.map(x=>x.tot),1),W=330,H=122,bw=W/6;
+  let svg='';
+  datos.forEach((x,i)=>{
+    const bh=Math.round(x.tot/max*70),yb=96-bh,ult=i===5;
+    svg+=`<rect x="${i*bw+9}" y="${yb}" width="${bw-18}" height="${bh||2}" rx="6" fill="${ult?'#8FA6FF':'#313A46'}"/>
+    <text x="${i*bw+bw/2}" y="${yb-6}" text-anchor="middle" fill="${ult?'var(--text)':'var(--muted)'}" font-size="9.5" font-family="var(--mono)">${x.tot?CLPk(x.tot):''}</text>
+    <text x="${i*bw+bw/2}" y="114" text-anchor="middle" fill="var(--muted)" font-size="10">${x.lab}</text>`;});
+  el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%">${svg}</svg>
+    <div class="t2" style="margin-top:4px;text-align:center">Cupo disponible ahora: <b style="color:var(--menta)">${CLP(S.tarjeta.cupoTotal-S.tarjeta.utilizado)}</b></div>`;}
+
+/* ══════════ Resumen semanal ══════════ */
+function resumenSemanal(){
+  const el=document.getElementById('resumenSemanal');if(!el)return;
+  const desde=new Date();desde.setDate(desde.getDate()-6);
+  const desdeStr=desde.getFullYear()+'-'+String(desde.getMonth()+1).padStart(2,'0')+'-'+String(desde.getDate()).padStart(2,'0');
+  const gSem=S.gastos.filter(g=>g.fecha>=desdeStr);
+  const totGSem=gSem.reduce((s,g)=>s+g.monto,0);
+  const aSem=S.metas.flatMap(m=>m.aportes.filter(a=>a.fecha>=desdeStr));
+  const totASem=aSem.reduce((s,a)=>s+a.monto,0);
+  let progHab=0,totHab=0;
+  for(let i=0;i<7;i++){
+    const d=new Date();d.setDate(d.getDate()-i);
+    const fd=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    S.habitos.forEach(h=>{if(h.dias.includes(d.getDay())){totHab++;if(cumplidoEn(h,fd))progHab++;}});}
+  const pctHab=totHab?Math.round(progHab/totHab*100):0;
+  el.innerHTML=`
+    <div class="row"><div class="ic" style="background:var(--coral-bg)">🧾</div>
+      <div class="tx"><div class="t1">Gastos últimos 7 días</div><div class="t2">${gSem.length} movimiento${gSem.length===1?'':'s'}</div></div>
+      <div class="monto" style="color:var(--coral)">${CLP(totGSem)}</div></div>
+    <div class="row"><div class="ic" style="background:var(--oro-bg)">🎯</div>
+      <div class="tx"><div class="t1">Ahorrado últimos 7 días</div><div class="t2">${aSem.length} aporte${aSem.length===1?'':'s'}</div></div>
+      <div class="monto" style="color:var(--oro)">${CLP(totASem)}</div></div>
+    <div class="row"><div class="ic" style="background:var(--menta-bg)">🔥</div>
+      <div class="tx"><div class="t1">Hábitos cumplidos</div><div class="t2">${progHab} de ${totHab} programados</div></div>
+      <div class="monto" style="color:var(--menta)">${pctHab}%</div></div>`;}
+
+/* ══════════ Aviso de presupuesto en Inicio ══════════ */
+function avisoPresupuestoInicio(gMes){
+  const el=document.getElementById('avisoPresupuestoInicio');if(!el)return;
+  const alertas=alertasPresupuesto(gMes);
+  if(!alertas.length){el.innerHTML='';return;}
+  const peor=alertas[0];
+  const excedidos=alertas.filter(a=>a.pct>=100).length;
+  el.innerHTML=`<div class="aviso" style="display:block;background:${peor.pct>=100?'var(--coral-bg)':'var(--oro-bg)'};
+    border-color:${peor.pct>=100?'rgba(255,122,107,.35)':'rgba(232,184,75,.35)'};color:${peor.pct>=100?'var(--coral)':'var(--oro)'}">
+    ${peor.pct>=100?'🚨':'⚠️'} ${excedidos>0?`Te pasaste del presupuesto en ${excedidos} categoría${excedidos===1?'':'s'}`:`${peor.emoji} ${peor.cat} está al ${Math.round(peor.pct)}% de tu presupuesto`} —
+    <button class="lnk" style="font-size:12px;padding:0" onclick="irTab('gastos')">ver detalle ›</button></div>`;}
 
 /* ══════════ Fijos mensuales ══════════ */
 function renderFijos(){
@@ -851,8 +914,11 @@ function aplicarRecurrentes(){
 
 
 /* ══════════ Gestión de categorías ══════════ */
+function volverDelRetorno(payload){const fn=retornoFormulario;retornoFormulario=null;
+  if(fn)fn(payload);else{cerrarHoja();}}
 function hojaCategorias(){
   abrirHoja(`<h3>Categorías de gastos</h3>
+  ${retornoFormulario?`<button class="lnk" onclick="volverDelRetorno()">‹ Volver sin crear ninguna</button>`:''}
   <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Toca una para editarla u ocultarla. Los gastos ya registrados no se pierden aunque cambies o quites una categoría.</p>
   <div style="max-height:38vh;overflow-y:auto;margin-bottom:14px">
   ${S.config.categorias.map((c,i)=>`<div class="row" onclick="hojaEditarCategoria(${i})" style="${c.oculta?'opacity:.4':''}">
@@ -874,7 +940,8 @@ function crearCategoria(){
   if(catsTodas().some(c=>c.n.toLowerCase()===n.toLowerCase())){alert('Ya existe una categoría con ese nombre.');return;}
   const col=PALETA_EXTRA[S.config.categorias.length%PALETA_EXTRA.length];
   S.config.categorias.push({n,e:document.getElementById('ncEmo').value.trim()||'🏷️',c:col,oculta:false});
-  guardar();hojaCategorias();}
+  guardar();
+  if(retornoFormulario)volverDelRetorno({cat:n});else hojaCategorias();}
 function hojaEditarCategoria(i){
   const c=S.config.categorias[i];if(!c)return;
   abrirHoja(`<h3>Editar categoría</h3>
@@ -905,16 +972,40 @@ function borrarCategoria(i){const c=S.config.categorias[i];if(!c)return;
   if(!usada&&!confirm('¿Eliminar esta categoría?'))return;
   S.config.categorias.splice(i,1);guardar();hojaCategorias();}
 
+/* ══════════ Cuentas: creación inline desde gasto/ingreso ══════════ */
+function hojaNuevaCuenta(){
+  abrirHoja(`<h3>Nueva cuenta</h3>
+  ${retornoFormulario?`<button class="lnk" onclick="volverDelRetorno()">‹ Volver sin crear ninguna</button>`:''}
+  <div class="campo"><label>Nombre</label><input id="ncaNom" type="text" placeholder="Ej: Banco Falabella"></div>
+  <div class="campo"><label>Emoji</label><input id="ncaEmo" type="text" placeholder="🏦" value="🏦"></div>
+  <button class="btn menta" onclick="crearCuenta()">Crear cuenta</button>`);}
+function crearCuenta(){
+  const n=document.getElementById('ncaNom').value.trim();
+  if(!n){alert('Ponle un nombre a la cuenta.');return;}
+  if(S.cuentas.some(c=>c.nombre.toLowerCase()===n.toLowerCase())){alert('Ya existe una cuenta con ese nombre.');return;}
+  const c={id:uid(),nombre:n,emoji:document.getElementById('ncaEmo').value.trim()||'🏦',saldo:0,tasaAnual:0,ultimoInteres:hoy()};
+  S.cuentas.push(c);guardar();
+  if(retornoFormulario)volverDelRetorno({cuenta:c.id});else{cerrarHoja();pintar();}}
+
 /* ══════════ Ingresos ══════════ */
 let cuentaSel='mp';
 function chipsCuenta(sel,fn){fn=fn||'selCuenta';return S.cuentas.map(c=>
   `<button class="chip ${c.id===sel?'oncat':''}" onclick="${fn}('${c.id}')">${c.emoji} ${c.nombre}</button>`).join('');}
 function selCuenta(id){cuentaSel=id;document.getElementById('cChips').innerHTML=chipsCuenta(cuentaSel);}
-function hojaNuevoIngreso(){cuentaSel='mp';abrirHoja(`<h3>Registrar ingreso</h3>
-  ${inp('iMonto','Monto (CLP)','1500000','number','','inputmode="numeric"')}
-  ${inp('iDesc','Descripción','Sueldo')}
-  <div class="campo"><label>¿A qué cuenta llega?</label><div class="chips" id="cChips">${chipsCuenta(cuentaSel)}</div></div>
-  ${inp('iFecha','Fecha','','date',hoy())}
+function capturarIngreso(editId){
+  return{editId,monto:document.getElementById('iMonto').value,desc:document.getElementById('iDesc').value,
+    cuenta:cuentaSel,fecha:document.getElementById('iFecha').value};}
+function irNuevaCuentaDesdeIngreso(editId){
+  const b=capturarIngreso(editId);
+  retornoFormulario=(payload)=>{if(payload&&payload.cuenta)b.cuenta=payload.cuenta;
+    if(b.editId)hojaEditarIngreso(b.editId,b);else hojaNuevoIngreso(b);};
+  hojaNuevaCuenta();}
+function hojaNuevoIngreso(b){cuentaSel=(b&&b.cuenta)||'mp';abrirHoja(`<h3>Registrar ingreso</h3>
+  ${inp('iMonto','Monto (CLP)','1500000','number',(b&&b.monto)||'','inputmode="numeric"')}
+  ${inp('iDesc','Descripción','Sueldo','text',(b&&b.desc)||'')}
+  <div class="campo"><label>¿A qué cuenta llega? <button class="lnk" style="font-size:11.5px" onclick="irNuevaCuentaDesdeIngreso(null)">＋ nueva cuenta</button></label>
+  <div class="chips" id="cChips">${chipsCuenta(cuentaSel)}</div></div>
+  ${inp('iFecha','Fecha','','date',(b&&b.fecha)||hoy())}
   <button class="btn menta" onclick="guardarIngreso()">Guardar ingreso</button>`);}
 function guardarIngreso(){const m=+document.getElementById('iMonto').value;
   if(!m||m<=0){alert('Ingresa un monto válido.');return;}
@@ -924,12 +1015,14 @@ function guardarIngreso(){const m=+document.getElementById('iMonto').value;
   guardar();cerrarHoja();pintar();}
 function borrarIngreso(id){const i=S.ingresos.find(x=>x.id===id);if(i)efectoIngreso(i,false);
   S.ingresos=S.ingresos.filter(i=>i.id!==id);guardar();pintar();}
-function hojaEditarIngreso(id){const i=S.ingresos.find(x=>x.id===id);if(!i)return;cuentaSel=i.cuenta||'mp';
+function hojaEditarIngreso(id,b){const i=S.ingresos.find(x=>x.id===id);if(!i)return;
+  cuentaSel=(b&&b.cuenta)||i.cuenta||'mp';
   abrirHoja(`<h3>Editar ingreso</h3>
-  ${inp('iMonto','Monto (CLP)','','number',i.monto,'inputmode="numeric"')}
-  ${inp('iDesc','Descripción','','text',i.desc)}
-  <div class="campo"><label>¿A qué cuenta llega?</label><div class="chips" id="cChips">${chipsCuenta(cuentaSel)}</div></div>
-  ${inp('iFecha','Fecha','','date',i.fecha)}
+  ${inp('iMonto','Monto (CLP)','','number',(b?b.monto:i.monto),'inputmode="numeric"')}
+  ${inp('iDesc','Descripción','','text',(b?b.desc:i.desc)||'')}
+  <div class="campo"><label>¿A qué cuenta llega? <button class="lnk" style="font-size:11.5px" onclick="irNuevaCuentaDesdeIngreso('${id}')">＋ nueva cuenta</button></label>
+  <div class="chips" id="cChips">${chipsCuenta(cuentaSel)}</div></div>
+  ${inp('iFecha','Fecha','','date',(b&&b.fecha)||i.fecha)}
   <button class="btn menta" onclick="actualizarIngreso('${id}')">Guardar cambios</button>
   <div style="height:8px"></div>
   <button class="btn fant" onclick="borrarIngreso('${id}');cerrarHoja()">🗑 Eliminar ingreso</button>`);}
@@ -1052,6 +1145,40 @@ function renderTarjeta(){
     <div class="fila-btn"><button class="btn coral chico" onclick="hojaPagarTarjeta()">Pagar tarjeta</button>
     <button class="btn fant chico" onclick="hojaSolicitarAvance()">Solicitar avance</button></div>`;}
 
+/* ══════════ Buscador de movimientos ══════════ */
+let ultimosMovs=[],busquedaMov='';
+function textoMov(m){
+  if(m._t==='i')return`${m.desc} ${medioLabel(m.cuenta)}`;
+  if(m._t==='a')return`ahorro ${m._meta.nombre}`;
+  if(m._t==='p')return labelTraspaso(m);
+  return`${m.nota||''} ${m.cat} ${medioLabel(m.medioPago)}`;}
+function filaMov(m){
+  if(m._t==='i')return `<div class="row" onclick="hojaEditarIngreso('${m.id}')"><div class="ic" style="background:var(--menta-bg)">💰</div>
+    <div class="tx"><div class="t1">${m.desc}</div><div class="t2">Ingreso · ${medioLabel(m.cuenta)} · ${m.fecha} · toca para editar</div></div>
+    <div class="monto" style="color:var(--menta)">+${CLP(m.monto)}</div>
+    <button class="del" onclick="event.stopPropagation();borrarIngreso('${m.id}')">✕</button></div>`;
+  if(m._t==='a')return `<div class="row" onclick="hojaEditarAporte('${m._meta.id}','${m.id}')"><div class="ic" style="background:var(--oro-bg)">${m._meta.emoji}</div>
+    <div class="tx"><div class="t1">Ahorro: ${m._meta.nombre}</div><div class="t2">Aporte a meta · ${m.fecha} · toca para editar</div></div>
+    <div class="monto" style="color:var(--oro)">−${CLP(m.monto)}</div>
+    <button class="del" onclick="event.stopPropagation();borrarAporte('${m._meta.id}','${m.id}')">✕</button></div>`;
+  if(m._t==='p')return `<div class="row" onclick="hojaEditarTraspaso('${m.id}')"><div class="ic" style="background:var(--card2)">${m.destino==='credito'?'💳':(m.origen==='credito'?'💳':'⇄')}</div>
+    <div class="tx"><div class="t1">${labelTraspaso(m)}</div><div class="t2">${m.fecha} · toca para editar</div></div>
+    <div class="monto" style="color:var(--muted)">↦ ${CLP(m.monto)}</div>
+    <button class="del" onclick="event.stopPropagation();borrarTraspaso('${m.id}')">✕</button></div>`;
+  const c=catsTodas().find(x=>x.n===m.cat)||CAT_OTROS;
+  return `<div class="row" onclick="hojaEditarGasto('${m.id}')"><div class="ic" style="background:${c.c}22">${c.e}</div>
+    <div class="tx"><div class="t1">${m.nota||m.cat}</div><div class="t2">${m.cat} · ${medioLabel(m.medioPago)} · ${m.fecha} · toca para editar</div></div>
+    <div class="monto" style="color:var(--coral)">−${CLP(m.monto)}</div>
+    <button class="del" onclick="event.stopPropagation();borrarGasto('${m.id}')">✕</button></div>`;}
+function renderMovimientos(){
+  const el=document.getElementById('listaGastos');if(!el)return;
+  const q=busquedaMov.trim().toLowerCase();
+  const filtrados=q?ultimosMovs.filter(m=>textoMov(m).toLowerCase().includes(q)):ultimosMovs;
+  el.innerHTML=filtrados.length?filtrados.map(filaMov).join('')
+    :`<div class="vacio">${q?`Sin resultados para "${busquedaMov}".`:'Sin movimientos este mes.'}</div>`;}
+function buscarMovimientos(v){busquedaMov=v;renderMovimientos();}
+
+
 /* ══════════ Proyección de metas ══════════ */
 function proyeccion(m){
   if(!m.aportes.length)return m.fechaLimite?`<div class="t2" style="margin-top:5px;color:var(--dim)">📈 Registra aportes para proyectar tu ritmo</div>`:'';
@@ -1100,6 +1227,9 @@ function cerrarHoja(){const hj=document.getElementById('hoja');
   hj.addEventListener('touchend',soltar);
   hj.addEventListener('touchcancel',soltar);
 })();
+/* Cuando el usuario está llenando un gasto/ingreso y necesita crear una categoría o cuenta nueva,
+   guardamos su borrador aquí y lo restauramos automáticamente al volver, en vez de perderlo. */
+let retornoFormulario=null;
 const inp=(id,lab,ph,tipo='text',val='',extra='')=>
   `<div class="campo"><label>${lab}</label><input id="${id}" type="${tipo}" placeholder="${ph}" value="${val}" ${extra}></div>`;
 
@@ -1109,15 +1239,30 @@ function catsMedio(){return[...S.cuentas,{id:'credito',nombre:'Tarjeta de crédi
 
 /* — Gasto — */
 let catSel='Restaurant',medioSel='mp';
-function hojaNuevoGasto(){catSel='Restaurant';medioSel='mp';
+function capturarGasto(editId){
+  return{editId,monto:document.getElementById('gMonto').value,medioPago:medioSel,cat:catSel,
+    nota:document.getElementById('gNota').value,fecha:document.getElementById('gFecha').value};}
+function irGestionarCategoriasDesdeGasto(editId){
+  const b=capturarGasto(editId);
+  retornoFormulario=(payload)=>{if(payload&&payload.cat)b.cat=payload.cat;
+    if(b.editId)hojaEditarGasto(b.editId,b);else hojaNuevoGasto(b);};
+  hojaCategorias();}
+function irNuevaCuentaDesdeGasto(editId){
+  const b=capturarGasto(editId);
+  retornoFormulario=(payload)=>{if(payload&&payload.cuenta)b.medioPago=payload.cuenta;
+    if(b.editId)hojaEditarGasto(b.editId,b);else hojaNuevoGasto(b);};
+  hojaNuevaCuenta();}
+function hojaNuevoGasto(b){
+  catSel=(b&&b.cat)||'Restaurant';medioSel=(b&&b.medioPago)||'mp';
   abrirHoja(`<h3>Registrar gasto</h3>
-    ${inp('gMonto','Monto (CLP)','15000','number','','inputmode="numeric"')}
-    <div class="campo"><label>Medio de pago</label><div class="chips" id="mChips">${chipsMedio(medioSel)}</div></div>
-    <div class="campo"><label>Categoría <button class="lnk" style="font-size:11.5px" onclick="hojaCategorias()">gestionar ›</button></label>
+    ${inp('gMonto','Monto (CLP)','15000','number',(b&&b.monto)||'','inputmode="numeric"')}
+    <div class="campo"><label>Medio de pago <button class="lnk" style="font-size:11.5px" onclick="irNuevaCuentaDesdeGasto(null)">＋ nueva cuenta</button></label>
+    <div class="chips" id="mChips">${chipsMedio(medioSel)}</div></div>
+    <div class="campo"><label>Categoría <button class="lnk" style="font-size:11.5px" onclick="irGestionarCategoriasDesdeGasto(null)">gestionar ›</button></label>
     <div class="chips" id="gChips">${catsActivas().map(c=>
       `<button class="chip ${c.n===catSel?'oncat':''}" onclick="selCat('${c.n}')">${c.e} ${c.n}</button>`).join('')}</div></div>
-    ${inp('gNota','Nota (opcional)','Almuerzo con el equipo')}
-    ${inp('gFecha','Fecha','','date',hoy())}
+    ${inp('gNota','Nota (opcional)','Almuerzo con el equipo','text',(b&&b.nota)||'')}
+    ${inp('gFecha','Fecha','','date',(b&&b.fecha)||hoy())}
     <button class="btn coral" onclick="guardarGasto()">Guardar gasto</button>`);}
 function selCat(n){catSel=n;document.querySelectorAll('#gChips .chip').forEach(c=>
   c.classList.toggle('oncat',c.textContent.includes(n)));}
@@ -1129,15 +1274,17 @@ function guardarGasto(){
     fecha:document.getElementById('gFecha').value||hoy()};
   S.gastos.push(g);efectoGasto(g,true);
   guardar();cerrarHoja();pintar();}
-function hojaEditarGasto(id){const g=S.gastos.find(x=>x.id===id);if(!g)return;catSel=g.cat;medioSel=g.medioPago||'mp';
+function hojaEditarGasto(id,b){const g=S.gastos.find(x=>x.id===id);if(!g)return;
+  catSel=(b&&b.cat)||g.cat;medioSel=(b&&b.medioPago)||g.medioPago||'mp';
   abrirHoja(`<h3>Editar gasto</h3>
-    ${inp('gMonto','Monto (CLP)','','number',g.monto,'inputmode="numeric"')}
-    <div class="campo"><label>Medio de pago</label><div class="chips" id="mChips">${chipsMedio(medioSel)}</div></div>
-    <div class="campo"><label>Categoría <button class="lnk" style="font-size:11.5px" onclick="hojaCategorias()">gestionar ›</button></label>
+    ${inp('gMonto','Monto (CLP)','','number',(b?b.monto:g.monto),'inputmode="numeric"')}
+    <div class="campo"><label>Medio de pago <button class="lnk" style="font-size:11.5px" onclick="irNuevaCuentaDesdeGasto('${id}')">＋ nueva cuenta</button></label>
+    <div class="chips" id="mChips">${chipsMedio(medioSel)}</div></div>
+    <div class="campo"><label>Categoría <button class="lnk" style="font-size:11.5px" onclick="irGestionarCategoriasDesdeGasto('${id}')">gestionar ›</button></label>
     <div class="chips" id="gChips">${catsActivas().map(c=>
       `<button class="chip ${c.n===catSel?'oncat':''}" onclick="selCat('${c.n}')">${c.e} ${c.n}</button>`).join('')}</div></div>
-    ${inp('gNota','Nota (opcional)','','text',g.nota||'')}
-    ${inp('gFecha','Fecha','','date',g.fecha)}
+    ${inp('gNota','Nota (opcional)','','text',(b?b.nota:g.nota)||'')}
+    ${inp('gFecha','Fecha','','date',(b&&b.fecha)||g.fecha)}
     <button class="btn coral" onclick="actualizarGasto('${id}')">Guardar cambios</button>
     <div style="height:8px"></div>
     <button class="btn fant" onclick="borrarGasto('${id}');cerrarHoja()">🗑 Eliminar gasto</button>`);}
