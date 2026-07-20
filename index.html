@@ -789,8 +789,9 @@ function resumenSemanal(){
   const desdeStr=desde.getFullYear()+'-'+String(desde.getMonth()+1).padStart(2,'0')+'-'+String(desde.getDate()).padStart(2,'0');
   const gSem=S.gastos.filter(g=>g.fecha>=desdeStr);
   const totGSem=gSem.reduce((s,g)=>s+g.monto,0);
-  const aSem=S.metas.flatMap(m=>m.aportes.filter(a=>a.fecha>=desdeStr));
-  const totASem=aSem.reduce((s,a)=>s+a.monto,0);
+  const desdeTrim=desdeTrimestreStr();
+  const aTrim=S.metas.flatMap(m=>m.aportes.filter(a=>a.fecha>=desdeTrim));
+  const totATrim=aTrim.reduce((s,a)=>s+a.monto,0);
   let progHab=0,totHab=0;
   for(let i=0;i<7;i++){
     const d=new Date();d.setDate(d.getDate()-i);
@@ -798,15 +799,42 @@ function resumenSemanal(){
     S.habitos.forEach(h=>{if(h.dias.includes(d.getDay())){totHab++;if(cumplidoEn(h,fd))progHab++;}});}
   const pctHab=totHab?Math.round(progHab/totHab*100):0;
   el.innerHTML=`
-    <div class="row"><div class="ic" style="background:var(--coral-bg)">🧾</div>
-      <div class="tx"><div class="t1">Gastos últimos 7 días</div><div class="t2">${gSem.length} movimiento${gSem.length===1?'':'s'}</div></div>
+    <div class="row" onclick="hojaDetalleGastosSemana()"><div class="ic" style="background:var(--coral-bg)">🧾</div>
+      <div class="tx"><div class="t1">Gastos últimos 7 días</div><div class="t2">${gSem.length} movimiento${gSem.length===1?'':'s'} · toca para ver detalle</div></div>
       <div class="monto" style="color:var(--coral)">${CLP(totGSem)}</div></div>
-    <div class="row"><div class="ic" style="background:var(--oro-bg)">🎯</div>
-      <div class="tx"><div class="t1">Ahorrado últimos 7 días</div><div class="t2">${aSem.length} aporte${aSem.length===1?'':'s'}</div></div>
-      <div class="monto" style="color:var(--oro)">${CLP(totASem)}</div></div>
-    <div class="row"><div class="ic" style="background:var(--menta-bg)">🔥</div>
-      <div class="tx"><div class="t1">Hábitos cumplidos</div><div class="t2">${progHab} de ${totHab} programados</div></div>
+    <div class="row" onclick="hojaDetalleAhorroTrimestre()"><div class="ic" style="background:var(--oro-bg)">🎯</div>
+      <div class="tx"><div class="t1">Ahorrado últimos 3 meses</div><div class="t2">${aTrim.length} aporte${aTrim.length===1?'':'s'} · toca para ver detalle</div></div>
+      <div class="monto" style="color:var(--oro)">${CLP(totATrim)}</div></div>
+    <div class="row" onclick="irTab('habitos')"><div class="ic" style="background:var(--menta-bg)">🔥</div>
+      <div class="tx"><div class="t1">Hábitos cumplidos</div><div class="t2">${progHab} de ${totHab} programados · toca para ver</div></div>
       <div class="monto" style="color:var(--menta)">${pctHab}%</div></div>`;}
+/* Primer día del mes de hace 2 meses => ventana de 3 meses calendario (actual + 2 anteriores) */
+function desdeTrimestreStr(){
+  const d=new Date();const ini=new Date(d.getFullYear(),d.getMonth()-2,1);
+  return ini.getFullYear()+'-'+String(ini.getMonth()+1).padStart(2,'0')+'-01';}
+function hojaDetalleGastosSemana(){
+  const desde=new Date();desde.setDate(desde.getDate()-6);
+  const desdeStr=desde.getFullYear()+'-'+String(desde.getMonth()+1).padStart(2,'0')+'-'+String(desde.getDate()).padStart(2,'0');
+  const lista=S.gastos.filter(g=>g.fecha>=desdeStr).sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  const total=lista.reduce((s,g)=>s+g.monto,0);
+  abrirHoja(`<h3>Gastos últimos 7 días</h3>
+  <p class="t2" style="margin-bottom:10px">Total: <b style="color:var(--coral)">${CLP(total)}</b> en ${lista.length} movimiento${lista.length===1?'':'s'}</p>
+  ${lista.length?lista.map(g=>{
+    const c=catsTodas().find(x=>x.n===g.cat)||CAT_OTROS;
+    return `<div class="row" onclick="hojaEditarGasto('${g.id}')"><div class="ic" style="background:${c.c}22">${c.e}</div>
+    <div class="tx"><div class="t1">${g.nota||g.cat}</div><div class="t2">${g.cat} · ${medioLabel(g.medioPago)} · ${g.fecha}</div></div>
+    <div class="monto" style="color:var(--coral)">−${CLP(g.monto)}</div></div>`;
+  }).join(''):'<div class="vacio">Sin gastos en este período.</div>'}`);}
+function hojaDetalleAhorroTrimestre(){
+  const desdeStr=desdeTrimestreStr();
+  const lista=S.metas.flatMap(m=>m.aportes.filter(a=>a.fecha>=desdeStr).map(a=>({...a,_meta:m})))
+    .sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  const total=lista.reduce((s,a)=>s+a.monto,0);
+  abrirHoja(`<h3>Ahorro últimos 3 meses</h3>
+  <p class="t2" style="margin-bottom:10px">Total: <b style="color:var(--oro)">${CLP(total)}</b> en ${lista.length} aporte${lista.length===1?'':'s'}</p>
+  ${lista.length?lista.map(a=>`<div class="row" onclick="hojaEditarAporte('${a._meta.id}','${a.id}')"><div class="ic" style="background:var(--oro-bg)">${a._meta.emoji}</div>
+  <div class="tx"><div class="t1">${a._meta.nombre}</div><div class="t2">${a.fecha}</div></div>
+  <div class="monto" style="color:var(--oro)">+${CLP(a.monto)}</div></div>`).join(''):'<div class="vacio">Sin aportes en este período.</div>'}`);}
 
 /* ══════════ Aviso de presupuesto en Inicio ══════════ */
 function avisoPresupuestoInicio(gMes){
